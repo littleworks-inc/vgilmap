@@ -7,6 +7,7 @@
 
 import type { VigilEvent } from '../types';
 import { earthquakeColor, DOMAIN_ICONS } from '../types';
+import { IntelBrief } from './IntelBrief';
 
 interface SidebarProps {
   events: VigilEvent[];
@@ -102,6 +103,9 @@ export function Sidebar({
           </div>
         </div>
       </div>
+
+      {/* ── AI Intel Brief ───────────────────────────────────── */}
+      <IntelBrief events={events} />
 
       {/* ── Filter / legend bar ─────────────────────────────── */}
       <div

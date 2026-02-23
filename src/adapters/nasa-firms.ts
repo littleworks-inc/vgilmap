@@ -121,7 +121,14 @@ export async function fetchNASAFirms(): Promise<VigilEvent[]> {
     throw new Error('NASA FIRMS returned an HTML error response. Check API key or rate limits.');
   }
 
-  const rows = parseCSV(csv);
+  const allRows = parseCSV(csv);
+
+  // FIRMS returns every thermal anomaly globally — tens of thousands per day.
+  // Keep only the top 50 by Fire Radiative Power so the sidebar / AI brief
+  // reflects genuinely significant fires rather than every hotspot pixel.
+  const rows = [...allRows]
+    .sort((a, b) => b.frp - a.frp)
+    .slice(0, 50);
 
   return rows.map((row, index): VigilEvent => {
     const severity = brightnessToSeverity(row.bright_ti4, row.frp);
