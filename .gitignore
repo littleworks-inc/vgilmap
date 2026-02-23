@@ -1,0 +1,55 @@
+# ── Dependencies ──────────────────────────────────────────
+node_modules/
+
+# ── Build output ──────────────────────────────────────────
+dist/
+dist-ssr/
+
+# ── Environment & secrets ─────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ── Logs ──────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ── TypeScript cache ──────────────────────────────────────
+*.tsbuildinfo
+
+# ── Vite cache ────────────────────────────────────────────
+.vite/
+
+# ── Editor directories ────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── OS files ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Test & coverage output ────────────────────────────────
+coverage/
+.nyc_output/
+
+# ── Archive (pending review before permanent deletion) ────
+archive/
+
+# ── Misc ──────────────────────────────────────────────────
+*.local
