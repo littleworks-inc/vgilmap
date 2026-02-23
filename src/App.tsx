@@ -1,77 +1,227 @@
 /**
- * App.tsx
+ * App.tsx — VigilMap root component
  *
- * Root component for VigilMap.
- * Layout: [Sidebar | Globe (full height)]
+ * Layout:  [Sidebar | DomainFilter + Globe]
  *
- * Data lifecycle:
- *  - Fetches USGS earthquakes on mount
+ * Data:
+ *  - Fetches all adapters in parallel on mount
+ *  - De-duplicates events by id across adapters
  *  - Auto-refreshes every 5 minutes
- *  - Clicking a sidebar row flies the map to that event
+ *  - Domain filter controls which events reach Globe + Sidebar
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Globe } from './map/Globe';
 import { Sidebar } from './components/Sidebar';
+import { DomainFilter } from './components/DomainFilter';
 import { fetchUSGSEarthquakes } from './adapters/usgs';
-import type { VigilEvent } from './types';
+import { fetchUSGSSignificantWeek } from './adapters/usgs-significant-week';
+import { fetchNASAFirms } from './adapters/nasa-firms';
+import { fetchNOAAAlerts } from './adapters/noaa';
+import type { Domain, VigilEvent } from './types';
+import { DOMAIN_ICONS } from './types';
 
-const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// ─── Constants ─────────────────────────────────────────────
+
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+
+const ALL_DOMAINS: Domain[] = [
+  'disaster', 'climate', 'health', 'conflict', 'economic', 'labor', 'science',
+];
+
+// ─── Adapter registry ──────────────────────────────────────
+
+const ADAPTERS: Array<{
+  key: string;
+  label: string;
+  fetch: () => Promise<VigilEvent[]>;
+}> = [
+  { key: 'usgs-day',   label: 'USGS 24h',        fetch: fetchUSGSEarthquakes },
+  { key: 'usgs-week',  label: 'USGS Significant', fetch: fetchUSGSSignificantWeek },
+  { key: 'nasa-firms', label: 'NASA FIRMS',        fetch: fetchNASAFirms },
+  { key: 'noaa',       label: 'NOAA Alerts',       fetch: fetchNOAAAlerts },
+];
+
+// ─── Helpers ───────────────────────────────────────────────
+
+function mergeEvents(arrays: VigilEvent[][]): VigilEvent[] {
+  const seen = new Set<string>();
+  const result: VigilEvent[] = [];
+  for (const arr of arrays) {
+    for (const ev of arr) {
+      if (!seen.has(ev.id)) {
+        seen.add(ev.id);
+        result.push(ev);
+      }
+    }
+  }
+  return result;
+}
+
+function countByDomain(events: VigilEvent[]): Partial<Record<Domain, number>> {
+  const counts: Partial<Record<Domain, number>> = {};
+  for (const ev of events) {
+    counts[ev.domain] = (counts[ev.domain] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function domainLabel(domain: Domain, count: number): string {
+  const labels: Record<Domain, [string, string]> = {
+    disaster: ['earthquake', 'earthquakes'],
+    climate:  ['event', 'events'],
+    health:   ['alert', 'alerts'],
+    conflict: ['incident', 'incidents'],
+    economic: ['indicator', 'indicators'],
+    labor:    ['event', 'events'],
+    science:  ['paper', 'papers'],
+  };
+  const [singular, plural] = labels[domain];
+  return count === 1 ? singular : plural;
+}
+
+// ─── Per-domain count pill ─────────────────────────────────
+
+function DomainCountPill({
+  events,
+  lastUpdated,
+}: {
+  events: VigilEvent[];
+  lastUpdated: Date | null;
+}) {
+  const counts = useMemo(() => countByDomain(events), [events]);
+
+  const active = (Object.entries(counts) as [Domain, number][])
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (active.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: '32px',
+        left: '12px',
+        background: 'rgba(10,15,30,0.88)',
+        border: '1px solid #1e293b',
+        borderRadius: '10px',
+        padding: '7px 12px',
+        fontSize: '12px',
+        color: '#94a3b8',
+        backdropFilter: 'blur(6px)',
+        zIndex: 5,
+        pointerEvents: 'none',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '10px',
+        maxWidth: '480px',
+        lineHeight: 1.6,
+      }}
+    >
+      {active.map(([domain, count]) => (
+        <span key={domain} style={{ whiteSpace: 'nowrap' }}>
+          <span>{DOMAIN_ICONS[domain]}</span>{' '}
+          <strong style={{ color: '#e2e8f0' }}>{count.toLocaleString()}</strong>{' '}
+          <span style={{ color: '#64748b' }}>{domainLabel(domain, count)}</span>
+        </span>
+      ))}
+      {lastUpdated && (
+        <span style={{ color: '#334155', borderLeft: '1px solid #1e293b', paddingLeft: '10px' }}>
+          {lastUpdated.toLocaleTimeString()}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── Root component ────────────────────────────────────────
 
 export default function App() {
-  const [events, setEvents] = useState<VigilEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [allEvents, setAllEvents]       = useState<VigilEvent[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [errors, setErrors]             = useState<string[]>([]);
+  const [lastUpdated, setLastUpdated]   = useState<Date | null>(null);
+  const [selectedId, setSelectedId]     = useState<string | undefined>();
+  const [activeDomains, setActiveDomains] = useState<Set<Domain>>(new Set(ALL_DOMAINS));
+
   const globeContainerRef = useRef<HTMLDivElement>(null);
 
-  // ── Data fetch ───────────────────────────────────────────
+  // ── Fetch all adapters in parallel ──────────────────────
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchUSGSEarthquakes();
-      // Sort newest first
-      data.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setEvents(data);
-      setLastUpdated(new Date());
-    } catch (err) {
-      console.error('Failed to fetch USGS data:', err);
-      setError('Could not load USGS data');
-    } finally {
-      setLoading(false);
-    }
+    setErrors([]);
+
+    const results = await Promise.allSettled(ADAPTERS.map(a => a.fetch()));
+
+    const arrays: VigilEvent[][] = [];
+    const errs: string[] = [];
+
+    results.forEach((result, i) => {
+      if (result.status === 'fulfilled') {
+        arrays.push(result.value);
+      } else {
+        console.error(`[${ADAPTERS[i].label}] failed:`, result.reason);
+        errs.push(ADAPTERS[i].label);
+      }
+    });
+
+    if (errs.length) setErrors(errs);
+
+    const merged = mergeEvents(arrays);
+    merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    setAllEvents(merged);
+    setLastUpdated(new Date());
+    setLoading(false);
   }, []);
 
-  // Initial load + auto-refresh
   useEffect(() => {
     load();
     const interval = setInterval(load, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [load]);
 
-  // ── Fly to event when sidebar row is clicked ─────────────
-  const handleSelectEvent = useCallback((ev: VigilEvent) => {
-    setSelectedId(ev.id);
+  // ── Domain filter ────────────────────────────────────────
+  const toggleDomain = useCallback((domain: Domain) => {
+    setActiveDomains(prev => {
+      const next = new Set(prev);
+      next.has(domain) ? next.delete(domain) : next.add(domain);
+      return next;
+    });
+  }, []);
 
-    // Use the __flyTo helper exposed on the globe container div
+  const selectAll = useCallback(() => setActiveDomains(new Set(ALL_DOMAINS)), []);
+  const clearAll  = useCallback(() => setActiveDomains(new Set()), []);
+
+  // ── Derived state ────────────────────────────────────────
+  const filteredEvents = useMemo(
+    () => allEvents.filter(ev => activeDomains.has(ev.domain)),
+    [allEvents, activeDomains]
+  );
+
+  const domainCounts = useMemo(() => countByDomain(allEvents), [allEvents]);
+
+  const errorMsg = errors.length > 0 ? `${errors.join(', ')} failed` : null;
+
+  // ── Fly to event ─────────────────────────────────────────
+  const flyToEvent = useCallback((ev: VigilEvent) => {
     const container = globeContainerRef.current?.querySelector(
       '[aria-label="VigilMap interactive globe"]'
-    ) as HTMLElement | null;
-    if (container && typeof (container as HTMLElement & { __flyTo?: Function }).__flyTo === 'function') {
-      (container as HTMLElement & { __flyTo: Function }).__flyTo(
-        ev.location.lat,
-        ev.location.lng,
-        6
-      );
-    }
+    ) as (HTMLElement & { __flyTo?: (lat: number, lng: number, zoom: number) => void }) | null;
+    container?.__flyTo?.(ev.location.lat, ev.location.lng, 6);
   }, []);
+
+  const handleSelectEvent = useCallback((ev: VigilEvent) => {
+    setSelectedId(ev.id);
+    flyToEvent(ev);
+  }, [flyToEvent]);
 
   const handleEventClickOnMap = useCallback((ev: VigilEvent) => {
     setSelectedId(ev.id);
   }, []);
 
+  // ── Render ───────────────────────────────────────────────
   return (
     <div
       style={{
@@ -83,71 +233,81 @@ export default function App() {
         fontFamily: 'system-ui, -apple-system, sans-serif',
       }}
     >
-      {/* ── Sidebar ────────────────────────────────────────── */}
+      {/* Sidebar */}
       <Sidebar
-        events={events}
+        events={filteredEvents}
         selectedId={selectedId}
         loading={loading}
-        error={error}
+        error={errorMsg}
         lastUpdated={lastUpdated}
         onSelectEvent={handleSelectEvent}
         onRefresh={load}
       />
 
-      {/* ── Map area ───────────────────────────────────────── */}
-      <div ref={globeContainerRef} style={{ flex: 1, position: 'relative' }}>
-        <Globe events={events} onEventClick={handleEventClickOnMap} />
+      {/* Right pane: filter bar + map */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* Loading overlay */}
-        {loading && events.length === 0 && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(10,15,30,0.7)',
-              color: '#94a3b8',
-              fontSize: '14px',
-              pointerEvents: 'none',
-              zIndex: 10,
-            }}
-          >
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '32px', marginBottom: '8px' }}>🌍</div>
-              <div>Loading live earthquake data…</div>
+        <DomainFilter
+          activeDomains={activeDomains}
+          counts={domainCounts}
+          onToggle={toggleDomain}
+          onSelectAll={selectAll}
+          onClearAll={clearAll}
+        />
+
+        <div ref={globeContainerRef} style={{ flex: 1, position: 'relative' }}>
+          <Globe events={filteredEvents} onEventClick={handleEventClickOnMap} />
+
+          {/* Initial loading overlay */}
+          {loading && allEvents.length === 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(10,15,30,0.75)',
+                color: '#94a3b8',
+                fontSize: '14px',
+                pointerEvents: 'none',
+                zIndex: 10,
+              }}
+            >
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '36px', marginBottom: '10px' }}>🌍</div>
+                <div>Loading global intelligence data…</div>
+                <div style={{ fontSize: '11px', color: '#475569', marginTop: '6px' }}>
+                  USGS · NASA FIRMS · NOAA
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Live event count pill */}
-        {events.length > 0 && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '12px',
-              left: '12px',
-              background: 'rgba(10,15,30,0.85)',
-              border: '1px solid #1e293b',
-              borderRadius: '8px',
-              padding: '6px 12px',
-              fontSize: '12px',
-              color: '#94a3b8',
-              backdropFilter: 'blur(4px)',
-              zIndex: 5,
-              pointerEvents: 'none',
-            }}
-          >
-            <span style={{ color: '#22c55e', marginRight: '6px' }}>●</span>
-            <strong style={{ color: '#e2e8f0' }}>{events.length}</strong> earthquakes in last 24h
-            {lastUpdated && (
-              <span style={{ marginLeft: '8px', color: '#475569' }}>
-                · {lastUpdated.toLocaleTimeString()}
-              </span>
-            )}
-          </div>
-        )}
+          {/* Per-domain count pill */}
+          <DomainCountPill events={filteredEvents} lastUpdated={lastUpdated} />
+
+          {/* Partial failure badge */}
+          {errors.length > 0 && !loading && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '12px',
+                left: '12px',
+                background: 'rgba(239,68,68,0.12)',
+                border: '1px solid #ef4444',
+                borderRadius: '8px',
+                padding: '5px 10px',
+                fontSize: '11px',
+                color: '#fca5a5',
+                zIndex: 5,
+                pointerEvents: 'none',
+              }}
+            >
+              ⚠ {errors.join(', ')} unavailable
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
