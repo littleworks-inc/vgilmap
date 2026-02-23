@@ -16,7 +16,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { VigilEvent } from '../types';
-import { earthquakeColor, earthquakeRadius } from '../types';
+import { earthquakeColor, earthquakeRadius, DOMAIN_COLORS } from '../types';
 
 // ─── constants ─────────────────────────────────────────────
 
@@ -69,10 +69,13 @@ function eventsToGeoJSON(
         magnitude: (ev.metadata?.magnitude as number) ?? 0,
         color: ev.category === 'earthquake'
           ? earthquakeColor((ev.metadata?.magnitude as number) ?? 0)
-          : '#6b7280',
+          : DOMAIN_COLORS[ev.domain] ?? '#6b7280',
         radius: ev.category === 'earthquake'
           ? earthquakeRadius((ev.metadata?.magnitude as number) ?? 0)
-          : 6,
+          : ev.severity === 'critical' ? 10
+          : ev.severity === 'high' ? 8
+          : ev.severity === 'medium' ? 6
+          : 5,
         timestamp: ev.timestamp,
         description: ev.description,
         sourceUrl: ev.sourceUrl,
