@@ -5,8 +5,8 @@
  * Clicking a row calls onSelectEvent so the globe can fly to it.
  */
 
-import type { VigilEvent } from '../types';
-import { earthquakeColor, DOMAIN_ICONS } from '../types';
+import type { VigilEvent, Domain } from '../types';
+import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
 import { IntelBrief } from './IntelBrief';
 
 interface SidebarProps {
@@ -19,25 +19,79 @@ interface SidebarProps {
   onRefresh: () => void;
 }
 
-function MagnitudeBadge({ mag }: { mag: number }) {
-  const color = earthquakeColor(mag);
+/** Earthquake: coloured M-badge. Other domains: coloured dot with domain icon. */
+function EventBadge({ event }: { event: VigilEvent }) {
+  if (event.category === 'earthquake') {
+    const mag = (event.metadata?.magnitude as number) ?? 0;
+    const color = earthquakeColor(mag);
+    return (
+      <span
+        style={{
+          display: 'inline-block',
+          padding: '1px 6px',
+          borderRadius: '4px',
+          fontSize: '11px',
+          fontWeight: 700,
+          color: '#fff',
+          backgroundColor: color,
+          minWidth: '36px',
+          textAlign: 'center',
+          flexShrink: 0,
+        }}
+      >
+        M{mag.toFixed(1)}
+      </span>
+    );
+  }
+
+  const domainColor = DOMAIN_COLORS[event.domain] ?? '#6b7280';
+  const domainIcon  = DOMAIN_ICONS[event.domain]  ?? '🌐';
   return (
     <span
       style={{
-        display: 'inline-block',
-        padding: '1px 6px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '32px',
+        height: '20px',
         borderRadius: '4px',
-        fontSize: '11px',
-        fontWeight: 700,
-        color: '#fff',
-        backgroundColor: color,
-        minWidth: '36px',
-        textAlign: 'center',
+        fontSize: '13px',
+        background: `${domainColor}22`,
+        border: `1px solid ${domainColor}55`,
+        flexShrink: 0,
       }}
+      title={event.domain}
     >
-      M{mag.toFixed(1)}
+      {domainIcon}
     </span>
   );
+}
+
+/** Subtitle metadata line — varies by category */
+function EventMeta({ event }: { event: VigilEvent }) {
+  const meta = event.metadata ?? {};
+
+  if (event.category === 'earthquake') {
+    return (
+      <>
+        {meta.depth_km !== undefined && (
+          <span>Depth: {Number(meta.depth_km).toFixed(0)} km</span>
+        )}
+        {Boolean(meta.tsunami) && (
+          <span style={{ color: '#3b82f6' }}>🌊 Tsunami alert</span>
+        )}
+      </>
+    );
+  }
+  if (event.category === 'wildfire') {
+    const frp = meta.frp != null ? `FRP: ${Number(meta.frp).toFixed(0)} MW` : null;
+    return frp ? <span style={{ color: '#f97316' }}>{frp}</span> : null;
+  }
+  if (event.category === 'extreme-weather') {
+    const type = meta.event_type as string | undefined;
+    return type ? <span style={{ color: '#60a5fa' }}>{type}</span> : null;
+  }
+  return null;
 }
 
 function timeAgo(isoString: string): string {
@@ -107,56 +161,51 @@ export function Sidebar({
       {/* ── AI Intel Brief ───────────────────────────────────── */}
       <IntelBrief events={events} />
 
-      {/* ── Filter / legend bar ─────────────────────────────── */}
-      <div
-        style={{
-          padding: '10px 16px',
-          borderBottom: '1px solid #1e293b',
-          display: 'flex',
-          gap: '8px',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-        }}
-      >
-        <span
-          style={{
-            fontSize: '11px',
-            color: '#64748b',
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-            marginRight: 4,
-          }}
-        >
-          Magnitude
-        </span>
-        {[
-          { label: 'M5+', color: '#ef4444' },
-          { label: 'M3–5', color: '#f97316' },
-          { label: '<M3', color: '#facc15' },
-        ].map(item => (
-          <span
-            key={item.label}
+      {/* ── Domain legend ────────────────────────────────────── */}
+      {(() => {
+        // Only show domains that have at least one event
+        const activeDomains = (Object.keys(DOMAIN_COLORS) as Domain[]).filter(
+          d => events.some(e => e.domain === d)
+        );
+        if (activeDomains.length === 0) return null;
+        return (
+          <div
             style={{
-              display: 'inline-flex',
+              padding: '8px 16px',
+              borderBottom: '1px solid #1e293b',
+              display: 'flex',
+              gap: '10px',
+              flexWrap: 'wrap',
               alignItems: 'center',
-              gap: '4px',
-              fontSize: '11px',
-              color: '#94a3b8',
             }}
           >
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: '50%',
-                backgroundColor: item.color,
-                display: 'inline-block',
-              }}
-            />
-            {item.label}
-          </span>
-        ))}
-      </div>
+            {activeDomains.map(domain => (
+              <span
+                key={domain}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                }}
+              >
+                <span
+                  style={{
+                    width: 9,
+                    height: 9,
+                    borderRadius: '50%',
+                    backgroundColor: DOMAIN_COLORS[domain],
+                    display: 'inline-block',
+                    flexShrink: 0,
+                  }}
+                />
+                {DOMAIN_ICONS[domain]} {domain}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* ── Status bar ──────────────────────────────────────── */}
       <div
@@ -214,7 +263,7 @@ export function Sidebar({
           color: '#475569',
         }}
       >
-        {DOMAIN_ICONS.disaster} Recent Earthquakes (24h)
+        Recent Events (24h)
       </div>
 
       {/* ── Event list ─────────────────────────────────────── */}
@@ -228,7 +277,7 @@ export function Sidebar({
               fontSize: '13px',
             }}
           >
-            Loading earthquake data…
+            Loading events…
           </div>
         )}
 
@@ -262,8 +311,9 @@ export function Sidebar({
         )}
 
         {recent.map(ev => {
-          const mag = (ev.metadata?.magnitude as number) ?? 0;
           const isSelected = ev.id === selectedId;
+          // For earthquakes show the location label; for all others show the title
+          const primaryText = ev.category === 'earthquake' ? ev.location.label : ev.title;
 
           return (
             <button
@@ -289,9 +339,9 @@ export function Sidebar({
                 !isSelected && ((e.currentTarget as HTMLElement).style.background = 'transparent')
               }
             >
-              {/* Magnitude badge */}
+              {/* Domain-aware badge */}
               <div style={{ paddingTop: '2px', flexShrink: 0 }}>
-                <MagnitudeBadge mag={mag} />
+                <EventBadge event={ev} />
               </div>
 
               {/* Text */}
@@ -306,7 +356,7 @@ export function Sidebar({
                     textOverflow: 'ellipsis',
                   }}
                 >
-                  {ev.location.label}
+                  {primaryText}
                 </div>
                 <div
                   style={{
@@ -319,12 +369,7 @@ export function Sidebar({
                   }}
                 >
                   <span>{timeAgo(ev.timestamp)}</span>
-                  {ev.metadata?.depth_km !== undefined && (
-                    <span>Depth: {Number(ev.metadata.depth_km).toFixed(0)} km</span>
-                  )}
-                  {Boolean(ev.metadata?.tsunami) && (
-                    <span style={{ color: '#3b82f6' }}>🌊 Tsunami alert</span>
-                  )}
+                  <EventMeta event={ev} />
                 </div>
               </div>
             </button>
@@ -342,7 +387,7 @@ export function Sidebar({
           textAlign: 'center',
         }}
       >
-        Data: USGS Earthquake Hazards Program · MIT License
+        Data: USGS · NASA FIRMS · NOAA NWS · MIT License
       </div>
     </aside>
   );

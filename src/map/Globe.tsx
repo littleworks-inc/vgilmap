@@ -23,6 +23,21 @@ import { earthquakeColor, earthquakeRadius, DOMAIN_COLORS } from '../types';
 const LAYER_ID = 'vigil-events';
 const SOURCE_ID = 'vigil-events';
 
+// Inline copies of domain/severity maps — popup HTML is a plain string,
+// can't reference module-level imports at serialization time.
+const POPUP_DOMAIN_COLORS: Record<string, string> = {
+  disaster: '#ef4444', climate: '#f97316', health: '#ec4899',
+  conflict: '#7c3aed', economic: '#eab308', labor: '#3b82f6', science: '#10b981',
+};
+const POPUP_DOMAIN_ICONS: Record<string, string> = {
+  disaster: '🌋', climate: '🌡️', health: '🏥',
+  conflict: '⚔️', economic: '💰', labor: '✊', science: '🔬',
+};
+const POPUP_SEVERITY_COLORS: Record<string, string> = {
+  critical: '#7c3aed', high: '#ef4444', medium: '#f97316',
+  low: '#facc15', info: '#6b7280',
+};
+
 // Free tile style from Stadia Maps (no API key for low traffic)
 const MAP_STYLE =
   'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json';
@@ -79,9 +94,127 @@ function eventsToGeoJSON(
         timestamp: ev.timestamp,
         description: ev.description,
         sourceUrl: ev.sourceUrl,
+        // Serialised as JSON strings — MapLibre flattens nested objects
+        metadata: JSON.stringify(ev.metadata ?? {}),
+        tags: JSON.stringify(ev.tags ?? []),
       },
     })),
   };
+}
+
+// ─── popup renderer ────────────────────────────────────────
+
+interface PopupProps {
+  id: string;
+  title: string;
+  severity: string;
+  category: string;
+  domain: string;
+  timestamp: string;
+  description: string;
+  sourceUrl: string;
+  metadata: string | Record<string, unknown>;
+  tags: string | string[];
+  [key: string]: unknown;
+}
+
+function renderPopup(props: PopupProps): string {
+  // MapLibre serialises nested objects to JSON strings — parse them back
+  const meta: Record<string, unknown> =
+    typeof props.metadata === 'string'
+      ? JSON.parse(props.metadata)
+      : (props.metadata ?? {});
+  const tags: string[] =
+    typeof props.tags === 'string'
+      ? JSON.parse(props.tags)
+      : (props.tags ?? []);
+
+  const domainColor  = POPUP_DOMAIN_COLORS[props.domain]  ?? '#6b7280';
+  const domainIcon   = POPUP_DOMAIN_ICONS[props.domain]   ?? '🌐';
+  const severityColor = POPUP_SEVERITY_COLORS[props.severity] ?? '#6b7280';
+
+  // ── secondary info line (domain / category aware) ───────
+  let secondary = '';
+  let linkLabel = 'Source ↗';
+
+  if (props.category === 'earthquake') {
+    const mag   = typeof props.magnitude === 'number' ? props.magnitude : Number(meta.magnitude ?? 0);
+    const depth = meta.depth_km != null ? `${Number(meta.depth_km).toFixed(0)} km` : '?';
+    secondary = `🔴 M${Number(mag).toFixed(1)} · depth ${depth}`;
+    if (tags.includes('tsunami-risk')) {
+      secondary += ` <span style="background:#1e3a5f;border:1px solid #3b82f6;color:#60a5fa;font-size:10px;padding:1px 5px;border-radius:4px;">⚠ Tsunami Risk</span>`;
+    }
+    linkLabel = 'USGS details ↗';
+
+  } else if (props.category === 'wildfire') {
+    const frp        = meta.frp        != null ? `${Number(meta.frp).toFixed(0)} MW` : '?';
+    const brightness = meta.brightness != null ? `${Number(meta.brightness).toFixed(0)} K` : '?';
+    const sat        = (meta.satellite as string) ?? 'VIIRS';
+    const confRaw    = (meta.confidence_raw as string) ?? 'n';
+    const confLabel  = confRaw === 'h' ? 'High' : confRaw === 'l' ? 'Low' : 'Nominal';
+    secondary = `🔥 FRP: ${frp} · Brightness: ${brightness}<br/>Satellite: ${sat} · Confidence: ${confLabel}`;
+    linkLabel = 'NASA FIRMS ↗';
+
+  } else if (props.category === 'extreme-weather') {
+    const evType    = (meta.event_type  as string) ?? 'Weather Alert';
+    const certainty = (meta.certainty   as string) ?? '';
+    const urgency   = (meta.urgency     as string) ?? '';
+    const expires   = meta.expires
+      ? new Date(meta.expires as string).toLocaleDateString()
+      : '';
+    secondary = `🌪 ${evType}`;
+    if (certainty || urgency) secondary += `<br/>Certainty: ${certainty} · Urgency: ${urgency}`;
+    if (expires) secondary += `<br/>Expires: ${expires}`;
+    linkLabel = 'NWS Alert ↗';
+
+  } else {
+    // Generic: just domain icon + severity badge
+    secondary = `${domainIcon} <span style="color:${domainColor};font-weight:600;">${props.domain}</span>`;
+  }
+
+  // ── truncate description ────────────────────────────────
+  const desc = (props.description ?? '').length > 120
+    ? props.description.slice(0, 120) + '…'
+    : (props.description ?? '');
+
+  // ── timestamp ───────────────────────────────────────────
+  const ts = new Date(props.timestamp).toLocaleString();
+
+  return `
+    <div style="
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #f1f5f9;
+      min-width: 220px;
+      max-width: 280px;
+    ">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">
+        <strong style="font-size:14px;color:#f1f5f9;line-height:1.3;flex:1;">
+          ${domainIcon} ${props.title ?? 'Event'}
+        </strong>
+        <span style="
+          font-size:10px;padding:2px 7px;border-radius:10px;
+          background:${severityColor}22;border:1px solid ${severityColor};
+          color:${severityColor};white-space:nowrap;flex-shrink:0;font-weight:600;
+        ">${props.severity}</span>
+      </div>
+
+      <div style="color:${domainColor};font-size:12px;margin-bottom:6px;line-height:1.5;">
+        ${secondary}
+      </div>
+
+      <div style="color:#64748b;font-size:11px;margin-bottom:6px;">${ts}</div>
+
+      ${desc ? `<div style="color:#94a3b8;font-size:12px;margin-bottom:8px;line-height:1.4;">${desc}</div>` : ''}
+
+      ${props.sourceUrl
+        ? `<a href="${props.sourceUrl}" target="_blank" rel="noopener"
+             style="color:#3b82f6;font-size:12px;text-decoration:none;"
+           >${linkLabel}</a>`
+        : ''}
+    </div>
+  `;
 }
 
 // ─── component ─────────────────────────────────────────────
@@ -227,24 +360,13 @@ export function Globe({ events, onEventClick }: GlobeProps) {
       // ── Click handler ────────────────────────────────────
       map.on('click', LAYER_ID, e => {
         if (!e.features || !e.features[0]) return;
-        const props = e.features[0].properties!;
+        const props = e.features[0].properties as PopupProps;
         const ev = eventsRef.current.find(v => v.id === props.id);
 
-        const mag = typeof props.magnitude === 'number' ? props.magnitude : 0;
-
-        // Show popup
         if (popupRef.current) popupRef.current.remove();
-        popupRef.current = new maplibregl.Popup({ maxWidth: '280px', offset: 12 })
+        popupRef.current = new maplibregl.Popup({ maxWidth: '300px', offset: 12 })
           .setLngLat(e.lngLat)
-          .setHTML(
-            `<div style="font-family:sans-serif;font-size:13px;line-height:1.5;color:#111;">
-              <strong style="font-size:14px;">${props.title ?? 'Event'}</strong><br/>
-              ${mag ? `<span style="color:#ef4444;font-weight:600;">M${Number(mag).toFixed(1)}</span> · ` : ''}
-              <span style="color:#6b7280;">${new Date(props.timestamp).toLocaleString()}</span><br/>
-              <span>${props.description ?? ''}</span><br/>
-              ${props.sourceUrl ? `<a href="${props.sourceUrl}" target="_blank" rel="noopener" style="color:#3b82f6;">USGS details ↗</a>` : ''}
-            </div>`
-          )
+          .setHTML(renderPopup(props))
           .addTo(map);
 
         if (ev && onEventClick) onEventClick(ev);
