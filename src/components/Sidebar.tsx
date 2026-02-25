@@ -387,7 +387,7 @@ export function Sidebar({
           textAlign: 'center',
         }}
       >
-        Data: USGS · NASA FIRMS · NOAA NWS · MIT License
+        Data: USGS · NASA FIRMS · NOAA NWS · GDELT · WHO · MIT License
       </div>
     </aside>
   );

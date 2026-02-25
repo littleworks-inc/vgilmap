@@ -167,6 +167,24 @@ function renderPopup(props: PopupProps): string {
     if (expires) secondary += `<br/>Expires: ${expires}`;
     linkLabel = 'NWS Alert ↗';
 
+  } else if (props.category === 'armed-conflict' || props.category === 'protest') {
+    const evType    = (meta.event_type     as string) ?? props.category;
+    const subType   = (meta.sub_event_type as string) ?? '';
+    const actor     = (meta.actor1         as string) ?? '';
+    const deaths    = meta.fatalities != null ? Number(meta.fatalities) : null;
+    const fatalLine = deaths !== null
+      ? (deaths > 0 ? `${deaths} fatalities` : 'No fatalities reported')
+      : '';
+    secondary = `⚔️ ${evType}${subType ? ` · ${subType}` : ''}`;
+    if (actor)     secondary += `<br/>Actor: ${actor}`;
+    if (fatalLine) secondary += `<br/>${fatalLine}`;
+    linkLabel = 'GDELT news ↗';
+
+  } else if (props.category === 'outbreak') {
+    const country = (meta.country as string) ?? props.domain;
+    secondary = `🏥 WHO Disease Outbreak<br/>Country: ${country}`;
+    linkLabel = 'WHO report ↗';
+
   } else {
     // Generic: just domain icon + severity badge
     secondary = `${domainIcon} <span style="color:${domainColor};font-weight:600;">${props.domain}</span>`;

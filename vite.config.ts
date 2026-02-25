@@ -56,6 +56,21 @@ export default defineConfig({
           'User-Agent': '(VigilMap, contact@vigilmap.app)',
         },
       },
+
+      // ── WHO Disease Outbreak News (DON) RSS ───────────────────────────────
+      // WHO's Disease Outbreak News feed — the dedicated outbreak-tracking RSS.
+      // news-releases.xml returns 404; the correct DON path is below.
+      // Proxy through Vite so we can fetch it server-side without CORS issues,
+      // then parse the raw XML in the browser with DOMParser.
+      '/api/who-rss': {
+        target: 'https://www.who.int',
+        changeOrigin: true,
+        rewrite: () => '/feeds/entity/csr/don/en/rss.xml',
+        headers: {
+          'User-Agent': 'VigilMap/1.0 (contact@vigilmap.app)',
+          'Accept': 'application/rss+xml, application/xml, text/xml',
+        },
+      },
     },
   },
 })

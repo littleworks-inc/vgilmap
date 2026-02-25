@@ -18,6 +18,8 @@ import { fetchUSGSEarthquakes } from './adapters/usgs';
 import { fetchUSGSSignificantWeek } from './adapters/usgs-significant-week';
 import { fetchNASAFirms } from './adapters/nasa-firms';
 import { fetchNOAAAlerts } from './adapters/noaa';
+import { fetchGDELT } from './adapters/gdelt';
+import { fetchWHOOutbreaks } from './adapters/who';
 import type { Domain, VigilEvent } from './types';
 import { DOMAIN_ICONS } from './types';
 
@@ -40,6 +42,8 @@ const ADAPTERS: Array<{
   { key: 'usgs-week',  label: 'USGS Significant', fetch: fetchUSGSSignificantWeek },
   { key: 'nasa-firms', label: 'NASA FIRMS',        fetch: fetchNASAFirms },
   { key: 'noaa',       label: 'NOAA Alerts',       fetch: fetchNOAAAlerts },
+  { key: 'gdelt',      label: 'GDELT Conflict',     fetch: fetchGDELT },
+  { key: 'who',        label: 'WHO Outbreaks',     fetch: fetchWHOOutbreaks },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -278,7 +282,7 @@ export default function App() {
                 <div style={{ fontSize: '36px', marginBottom: '10px' }}>🌍</div>
                 <div>Loading global intelligence data…</div>
                 <div style={{ fontSize: '11px', color: '#475569', marginTop: '6px' }}>
-                  USGS · NASA FIRMS · NOAA
+                  USGS · NASA FIRMS · NOAA · GDELT · WHO
                 </div>
               </div>
             </div>
