@@ -1,17 +1,33 @@
 /**
- * WHO Adapter — Disease Outbreak News (RSS via Vite proxy)
+ * WHO Adapter — Disease Outbreak News (via rss2json.com)
  *
- * Fetches WHO's Disease Outbreak News (DON) RSS feed through a Vite
- * dev-server proxy (to avoid CORS), then parses the XML in the browser.
+ * Fetches WHO's news-releases RSS feed via the rss2json.com public API,
+ * which handles CORS and XML parsing server-side and returns clean JSON.
+ * No Vite proxy required.
  *
- * RSS source: https://www.who.int/feeds/entity/csr/don/en/rss.xml
- * Proxy path: /api/who-rss  (configured in vite.config.ts)
+ * RSS source:  https://www.who.int/rss-feeds/news-releases.xml
+ * API:         https://api.rss2json.com/v1/api.json?rss_url=...&count=50
  *
- * NOTE: In production, replace the proxy with a serverless function at
- *       /api/who-rss that forwards the request to WHO.
+ * NOTE: In production, this same URL works directly — no serverless function needed.
  */
 
 import type { VigilEvent, Severity } from '../types';
+
+// ─── rss2json response types ───────────────────────────────
+
+interface Rss2JsonItem {
+  title:       string;
+  pubDate:     string;   // "2024-01-15 10:30:00"
+  link:        string;
+  description: string;   // may contain HTML
+  guid:        string;
+}
+
+interface Rss2JsonResponse {
+  status: string;        // "ok" | "error"
+  items:  Rss2JsonItem[];
+  message?: string;      // present when status !== "ok"
+}
 
 // ─── Disease keyword filter ────────────────────────────────
 
@@ -165,65 +181,30 @@ function guidToId(guid: string): string {
   return `who-${Math.abs(h).toString(36)}`;
 }
 
-// ─── XML helpers ──────────────────────────────────────────
-
-/** Get text content of a direct child element by tag name */
-function getChildText(el: Element, tag: string): string {
-  // RSS <link> is unusual — it's a sibling text node, not a child element
-  if (tag === 'link') {
-    const child = el.querySelector(tag);
-    // Some RSS parsers put <link> content as text node after a processing instruction
-    if (child) return child.textContent?.trim() ?? '';
-    // Fallback: try to find text sibling
-    const nodes = el.childNodes;
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      if (node.nodeType === 1 /* ELEMENT_NODE */ &&
-          (node as Element).tagName.toLowerCase() === 'link') {
-        return node.textContent?.trim() ?? '';
-      }
-    }
-    return '';
-  }
-  return el.querySelector(tag)?.textContent?.trim() ?? '';
-}
-
 // ─── Main fetch ────────────────────────────────────────────
 
-const WHO_PROXY = '/api/who-rss';
+const WHO_RSS_URL =
+  'https://api.rss2json.com/v1/api.json' +
+  '?rss_url=https%3A%2F%2Fwww.who.int%2Frss-feeds%2Fnews-releases.xml' +
+  '&api_key=&count=50';
 
 export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
-  const response = await fetch(WHO_PROXY);
+  const response = await fetch(WHO_RSS_URL);
 
   if (!response.ok) {
-    throw new Error(`WHO RSS proxy failed: ${response.status} ${response.statusText}`);
+    throw new Error(`rss2json fetch failed: ${response.status} ${response.statusText}`);
   }
 
-  const xmlText = await response.text();
+  const json: Rss2JsonResponse = await response.json();
 
-  if (!xmlText.trim().startsWith('<')) {
-    throw new Error('WHO RSS proxy returned non-XML content');
+  if (json.status !== 'ok') {
+    throw new Error(`rss2json error: ${json.message ?? json.status}`);
   }
 
-  // Parse XML in the browser
-  const parser = new DOMParser();
-  const xmlDoc  = parser.parseFromString(xmlText, 'application/xml');
-
-  // Check for parse errors
-  const parseError = xmlDoc.querySelector('parsererror');
-  if (parseError) {
-    throw new Error(`WHO RSS XML parse error: ${parseError.textContent?.slice(0, 100)}`);
-  }
-
-  const items = Array.from(xmlDoc.querySelectorAll('channel > item'));
   const events: VigilEvent[] = [];
 
-  for (const item of items) {
-    const title       = getChildText(item, 'title');
-    const link        = getChildText(item, 'link');
-    const pubDate     = getChildText(item, 'pubDate');
-    const description = getChildText(item, 'description');
-    const guid        = getChildText(item, 'guid') || link || title;
+  for (const item of json.items) {
+    const { title, pubDate, link, description, guid } = item;
 
     if (!title || !isOutbreakItem(title)) continue;
 
@@ -233,14 +214,13 @@ export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
     const coords = COUNTRY_COORDS[country];
     if (!coords) continue;
 
-    const [lat, lng] = coords;
-    const cleanDesc  = stripHtml(description).slice(0, 300);
-    const severity   = whoSeverity(title, cleanDesc);
+    const [lat, lng]  = coords;
+    const cleanDesc   = stripHtml(description).slice(0, 300);
+    const severity    = whoSeverity(title, cleanDesc);
 
-    // Parse RFC 2822 pubDate ("Mon, 15 Jan 2024 10:30:00 +0000")
-    // new Date() handles this natively in all modern browsers
+    // rss2json returns "2024-01-15 10:30:00" — convert to ISO 8601
     const timestamp = pubDate
-      ? (new Date(pubDate).toISOString() ?? new Date().toISOString())
+      ? new Date(pubDate.replace(' ', 'T') + 'Z').toISOString()
       : new Date().toISOString();
 
     // Strip common WHO title prefix
@@ -249,7 +229,7 @@ export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
       .trim();
 
     events.push({
-      id:        guidToId(guid),
+      id:        guidToId(guid || link || title),
       timestamp,
       domain:    'health',
       category:  'outbreak',
