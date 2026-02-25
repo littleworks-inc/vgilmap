@@ -188,7 +188,20 @@ export async function fetchGDELT(): Promise<VigilEvent[]> {
     throw new Error(`GDELT fetch failed: ${response.status} ${response.statusText}`);
   }
 
-  const json: GDELTResponse = await response.json();
+  // GDELT sometimes returns empty body or HTML error page when rate-limited
+  // or when no results match. Parse as text first to handle gracefully.
+  const text = await response.text();
+  if (!text || !text.trimStart().startsWith('{')) {
+    return [];  // empty or non-JSON response → no events
+  }
+
+  let json: GDELTResponse;
+  try {
+    json = JSON.parse(text) as GDELTResponse;
+  } catch {
+    return [];  // malformed JSON from GDELT → no events
+  }
+
   const articles = json.articles ?? [];
 
   const events: VigilEvent[] = [];

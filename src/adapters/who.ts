@@ -1,33 +1,70 @@
 /**
- * WHO Adapter — Disease Outbreak News (via rss2json.com)
+ * Health Adapter — Disease Outbreak Reports (ReliefWeb API)
  *
- * Fetches WHO's news-releases RSS feed via the rss2json.com public API,
- * which handles CORS and XML parsing server-side and returns clean JSON.
- * No Vite proxy required.
+ * WHO's RSS feeds are unreliable (paths change, proxies blocked).
+ * Instead we use the ReliefWeb API — a free, no-key, CORS-enabled REST API
+ * operated by UN OCHA that aggregates authoritative humanitarian reports
+ * including WHO Disease Outbreak News.
  *
- * RSS source:  https://www.who.int/rss-feeds/news-releases.xml
- * API:         https://api.rss2json.com/v1/api.json?rss_url=...&count=50
+ * API docs: https://apidoc.rwlabs.org/
+ * Endpoint: https://api.reliefweb.int/v1/reports
  *
- * NOTE: In production, this same URL works directly — no serverless function needed.
+ * ReliefWeb returns structured country data with lat/lon already embedded,
+ * so no country-name extraction or coordinate lookup table is needed.
  */
 
 import type { VigilEvent, Severity } from '../types';
 
-// ─── rss2json response types ───────────────────────────────
+// ─── API types ─────────────────────────────────────────────
 
-interface Rss2JsonItem {
-  title:       string;
-  pubDate:     string;   // "2024-01-15 10:30:00"
-  link:        string;
-  description: string;   // may contain HTML
-  guid:        string;
+interface AllOriginsResponse {
+  contents: string;
+  status: { url: string; content_type: string; http_code: number };
 }
 
-interface Rss2JsonResponse {
-  status: string;        // "ok" | "error"
-  items:  Rss2JsonItem[];
-  message?: string;      // present when status !== "ok"
+interface RWCountry {
+  id:        number;
+  name:      string;
+  iso3:      string;
+  shortname: string;
+  location?: { lat: number; lon: number };
 }
+
+interface RWReport {
+  id:     string;
+  fields: {
+    title:     string;
+    date?:     { created?: string; original?: string };
+    country?:  RWCountry[];
+    url_alias?: string;
+    body?:     string;
+  };
+}
+
+interface RWResponse {
+  data:  RWReport[];
+  count: number;
+  total: number;
+}
+
+// ─── Fetch config ──────────────────────────────────────────
+
+// ReliefWeb blocks browser CORS requests (403). We route through allorigins.win,
+// a free CORS proxy that makes the request server-to-server and wraps the
+// response as: { contents: "<json string>", status: { http_code: 200 } }
+const RELIEFWEB_QUERY =
+  'https://api.reliefweb.int/v1/reports' +
+  '?appname=VigilMap' +
+  '&query[value]=disease+OR+outbreak+OR+epidemic+OR+cholera+OR+mpox+OR+ebola+OR+dengue+OR+measles+OR+influenza' +
+  '&filter[field]=theme.name&filter[value]=Health' +
+  '&sort[]=date.created:desc' +
+  '&limit=50' +
+  '&fields[include][]=title' +
+  '&fields[include][]=date' +
+  '&fields[include][]=country' +
+  '&fields[include][]=url_alias';
+
+const FETCH_URL = `https://api.allorigins.win/get?url=${encodeURIComponent(RELIEFWEB_QUERY)}`;
 
 // ─── Disease keyword filter ────────────────────────────────
 
@@ -38,119 +75,19 @@ const OUTBREAK_KEYWORDS = [
   'marburg', 'lassa', 'typhoid', 'hepatitis', 'leprosy',
 ];
 
-function isOutbreakItem(title: string): boolean {
+function isOutbreakTitle(title: string): boolean {
   const lower = title.toLowerCase();
   return OUTBREAK_KEYWORDS.some(kw => lower.includes(kw));
 }
 
-// ─── Country → [lat, lng] lookup ──────────────────────────
-
-const COUNTRY_COORDS: Record<string, [number, number]> = {
-  'Nigeria':                            [9.082,    8.675],
-  'Democratic Republic of the Congo':   [-4.038,  21.759],
-  'DRC':                                [-4.038,  21.759],
-  'Congo':                              [-4.038,  21.759],
-  'Ethiopia':                           [9.145,   40.490],
-  'Somalia':                            [5.152,   46.200],
-  'Sudan':                              [12.862,  30.218],
-  'South Sudan':                        [6.877,   31.307],
-  'Uganda':                             [1.373,   32.290],
-  'Kenya':                              [-0.024,  37.906],
-  'Chad':                               [15.454,  18.732],
-  'Niger':                              [17.608,   8.082],
-  'Mali':                               [17.571,  -3.996],
-  'Cameroon':                           [3.848,   11.502],
-  'Ghana':                              [7.947,   -1.023],
-  'Guinea':                             [11.373, -11.737],
-  'Sierra Leone':                       [8.461,  -11.780],
-  'Liberia':                            [6.428,   -9.430],
-  'Ivory Coast':                        [7.540,   -5.547],
-  "Côte d'Ivoire":                      [7.540,   -5.547],
-  'Senegal':                            [14.497, -14.452],
-  'Mozambique':                         [-18.665, 35.530],
-  'Zimbabwe':                           [-19.015, 29.155],
-  'Malawi':                             [-13.254, 34.302],
-  'Zambia':                             [-13.133, 27.849],
-  'Angola':                             [-11.202, 17.874],
-  'Tanzania':                           [-6.369,  34.889],
-  'Rwanda':                             [-1.940,  29.874],
-  'Burundi':                            [-3.373,  29.919],
-  'Madagascar':                         [-18.767, 46.869],
-  'Cambodia':                           [12.566, 104.991],
-  'Indonesia':                          [-0.789, 113.921],
-  'Philippines':                        [12.880, 121.774],
-  'India':                              [20.594,  78.963],
-  'Pakistan':                           [30.375,  69.345],
-  'Afghanistan':                        [33.939,  67.710],
-  'Bangladesh':                         [23.685,  90.356],
-  'Myanmar':                            [21.916,  95.956],
-  'Vietnam':                            [14.058, 108.277],
-  'Thailand':                           [15.870, 100.993],
-  'China':                              [35.862, 104.195],
-  'Yemen':                              [15.553,  48.516],
-  'Iraq':                               [33.223,  43.679],
-  'Syria':                              [34.802,  38.997],
-  'Jordan':                             [30.586,  36.238],
-  'Lebanon':                            [33.854,  35.862],
-  'Saudi Arabia':                       [23.886,  45.079],
-  'Iran':                               [32.427,  53.688],
-  'Haiti':                              [18.971, -72.285],
-  'Brazil':                             [-14.235,-51.925],
-  'Peru':                               [-9.190, -75.015],
-  'Colombia':                           [4.571,  -74.297],
-  'Ecuador':                            [-1.831, -78.183],
-  'Bolivia':                            [-16.290, -63.589],
-  'Paraguay':                           [-23.443, -58.444],
-  'Venezuela':                          [6.424,  -66.590],
-  'Mexico':                             [23.634,-102.553],
-  'Honduras':                           [15.200, -86.242],
-  'Guatemala':                          [15.784, -90.231],
-  'Papua New Guinea':                   [-6.315, 143.956],
-  'Fiji':                               [-17.713, 178.065],
-  'Ukraine':                            [48.379,  31.165],
-  'Turkey':                             [38.964,  35.243],
-  'Kazakhstan':                         [48.020,  66.924],
-};
-
-// Country names sorted longest → shortest to avoid partial matches
-const SORTED_COUNTRIES = Object.keys(COUNTRY_COORDS)
-  .sort((a, b) => b.length - a.length);
-
-// ─── Country extraction ────────────────────────────────────
-
-/**
- * WHO titles follow patterns like:
- *   "Disease outbreak news: Cholera - Nigeria"
- *   "Mpox - Democratic Republic of the Congo"
- *   "Avian influenza A(H5N1) - Cambodia"
- *
- * Try last segment after " - " first, then scan whole title.
- */
-function extractCountry(title: string): string | null {
-  // Try " - Country" suffix pattern
-  const parts = title.split(' - ');
-  if (parts.length >= 2) {
-    const candidate = parts[parts.length - 1].trim();
-    if (COUNTRY_COORDS[candidate]) return candidate;
-  }
-
-  // Fallback: scan entire title for known country names
-  const lower = title.toLowerCase();
-  for (const country of SORTED_COUNTRIES) {
-    if (lower.includes(country.toLowerCase())) return country;
-  }
-
-  return null;
-}
-
 // ─── Severity ─────────────────────────────────────────────
 
-function whoSeverity(title: string, description: string): Severity {
-  const text = (title + ' ' + description).toLowerCase();
-  if (/death|fatal|killed/.test(text))          return 'high';
+function whoSeverity(title: string, body: string): Severity {
+  const text = (title + ' ' + body).toLowerCase();
+  if (/death|fatal|killed/.test(text))        return 'high';
   if (/outbreak|cases|confirmed/.test(text)) {
     const m = text.match(/(\d+)\s*(cases|confirmed|reported|deaths)/);
-    if (m && parseInt(m[1], 10) > 100) return 'medium';
+    if (m && parseInt(m[1], 10) > 100)        return 'medium';
     return 'medium';
   }
   return 'low';
@@ -173,87 +110,82 @@ function stripHtml(html: string): string {
 
 // ─── Stable ID ────────────────────────────────────────────
 
-function guidToId(guid: string): string {
-  let h = 0;
-  for (let i = 0; i < Math.min(guid.length, 64); i++) {
-    h = ((h << 5) - h + guid.charCodeAt(i)) | 0;
-  }
-  return `who-${Math.abs(h).toString(36)}`;
+function rwId(id: string): string {
+  return `rw-${id}`;
 }
 
 // ─── Main fetch ────────────────────────────────────────────
 
-const WHO_RSS_URL =
-  'https://api.rss2json.com/v1/api.json' +
-  '?rss_url=https%3A%2F%2Fwww.who.int%2Frss-feeds%2Fnews-releases.xml' +
-  '&api_key=&count=50';
-
 export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
-  const response = await fetch(WHO_RSS_URL);
+  const aoResponse = await fetch(FETCH_URL);
 
-  if (!response.ok) {
-    throw new Error(`rss2json fetch failed: ${response.status} ${response.statusText}`);
+  if (!aoResponse.ok) {
+    throw new Error(`allorigins fetch failed: ${aoResponse.status} ${aoResponse.statusText}`);
   }
 
-  const json: Rss2JsonResponse = await response.json();
+  const aoJson: AllOriginsResponse = await aoResponse.json();
 
-  if (json.status !== 'ok') {
-    throw new Error(`rss2json error: ${json.message ?? json.status}`);
+  if (aoJson.status?.http_code !== 200) {
+    throw new Error(`ReliefWeb returned HTTP ${aoJson.status?.http_code ?? 'unknown'} via proxy`);
   }
 
+  // allorigins returns the API response as a raw JSON string in `contents`
+  let json: RWResponse;
+  try {
+    json = JSON.parse(aoJson.contents) as RWResponse;
+  } catch {
+    throw new Error('ReliefWeb response could not be parsed as JSON');
+  }
   const events: VigilEvent[] = [];
 
-  for (const item of json.items) {
-    const { title, pubDate, link, description, guid } = item;
+  for (const report of json.data ?? []) {
+    const { title, date, country: countries, url_alias, body } = report.fields;
 
-    if (!title || !isOutbreakItem(title)) continue;
+    if (!title) continue;
+    if (!isOutbreakTitle(title)) continue;
 
-    const country = extractCountry(title);
-    if (!country) continue;
+    // Need at least one country with coordinates to place on the map
+    const country = countries?.find(c => c.location);
+    if (!country?.location) continue;
 
-    const coords = COUNTRY_COORDS[country];
-    if (!coords) continue;
+    const { lat, lon: lng } = country.location;
+    const cleanBody  = body ? stripHtml(body).slice(0, 300) : '';
+    const severity   = whoSeverity(title, cleanBody);
+    const timestamp  = date?.created ?? date?.original ?? new Date().toISOString();
 
-    const [lat, lng]  = coords;
-    const cleanDesc   = stripHtml(description).slice(0, 300);
-    const severity    = whoSeverity(title, cleanDesc);
-
-    // rss2json returns "2024-01-15 10:30:00" — convert to ISO 8601
-    const timestamp = pubDate
-      ? new Date(pubDate.replace(' ', 'T') + 'Z').toISOString()
-      : new Date().toISOString();
-
-    // Strip common WHO title prefix
+    // Strip common prefixes like "WHO Disease Outbreak News:"
     const cleanTitle = title
-      .replace(/^Disease outbreak news:\s*/i, '')
+      .replace(/^WHO\s+/i, '')
+      .replace(/^Disease\s+Outbreak\s+News:\s*/i, '')
       .trim();
 
     events.push({
-      id:        guidToId(guid || link || title),
+      id:          rwId(report.id),
       timestamp,
-      domain:    'health',
-      category:  'outbreak',
+      domain:      'health',
+      category:    'outbreak',
       severity,
-      title:     cleanTitle,
-      description: cleanDesc,
+      title:       cleanTitle,
+      description: cleanBody,
       location: {
         lat,
         lng,
-        country,
-        region: country,
-        label:  country,
+        country:  country.name,
+        region:   country.name,
+        label:    country.name,
       },
       source:    'WHO',
-      sourceUrl: link || 'https://www.who.int/emergencies/disease-outbreak-news',
+      sourceUrl: url_alias || 'https://reliefweb.int/updates?theme=Health',
       confidence: 0.90,
       tags: [
         'outbreak',
         'who',
-        country.toLowerCase().replace(/\s+/g, '-'),
+        country.iso3.toLowerCase(),
       ],
       metadata: {
-        country,
-        raw_title: title,
+        country:    country.name,
+        iso3:       country.iso3,
+        raw_title:  title,
       },
     });
   }
