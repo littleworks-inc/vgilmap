@@ -200,7 +200,7 @@ export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
         region:  loc.country,
         label:   loc.country,
       },
-      source:    'WHO',
+      source:    'GDELT/Health',
       sourceUrl: article.url,
       confidence: 0.65,
       tags: [

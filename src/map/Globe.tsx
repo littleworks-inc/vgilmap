@@ -183,7 +183,7 @@ function renderPopup(props: PopupProps): string {
   } else if (props.category === 'outbreak') {
     const country = (meta.country as string) ?? props.domain;
     secondary = `🏥 WHO Disease Outbreak<br/>Country: ${country}`;
-    linkLabel = 'WHO report ↗';
+    linkLabel = 'News source ↗';
 
   } else {
     // Generic: just domain icon + severity badge
