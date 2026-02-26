@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/noaa/:path*",
+      "destination": "/api/noaa"
+    }
+  ]
+}
