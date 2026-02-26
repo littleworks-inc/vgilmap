@@ -22,6 +22,8 @@ import { fetchGDELT } from './adapters/gdelt';
 import { fetchWHOOutbreaks } from './adapters/who';
 import type { Domain, VigilEvent } from './types';
 import { DOMAIN_ICONS } from './types';
+import { detectAnomalies } from './intelligence/anomaly';
+import type { AnomalySignal } from './intelligence/anomaly';
 
 // ─── Constants ─────────────────────────────────────────────
 
@@ -204,6 +206,11 @@ export default function App() {
     [allEvents, activeDomains]
   );
 
+  const anomalySignals = useMemo(
+    () => detectAnomalies(filteredEvents),
+    [filteredEvents]
+  );
+
   const domainCounts = useMemo(() => countByDomain(allEvents), [allEvents]);
 
   const errorMsg = errors.length > 0 ? `${errors.join(', ')} failed` : null;
@@ -223,6 +230,15 @@ export default function App() {
 
   const handleEventClickOnMap = useCallback((ev: VigilEvent) => {
     setSelectedId(ev.id);
+  }, []);
+
+  const handleSelectSignal = useCallback((signal: AnomalySignal) => {
+    const container = globeContainerRef.current?.querySelector(
+      '[aria-label="VigilMap interactive globe"]'
+    ) as (HTMLElement & {
+      __flyTo?: (lat: number, lng: number, zoom: number) => void
+    }) | null;
+    container?.__flyTo?.(signal.lat, signal.lng, 4);
   }, []);
 
   // ── Render ───────────────────────────────────────────────
@@ -246,6 +262,8 @@ export default function App() {
         lastUpdated={lastUpdated}
         onSelectEvent={handleSelectEvent}
         onRefresh={load}
+        anomalySignals={anomalySignals}
+        onSelectSignal={handleSelectSignal}
       />
 
       {/* Right pane: filter bar + map */}

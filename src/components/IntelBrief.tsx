@@ -25,6 +25,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { generateBrief } from '../intelligence/briefs';
 import type { BriefSource } from '../intelligence/briefs';
 import type { VigilEvent } from '../types';
+import { anomalySummary } from '../intelligence/anomaly';
+import type { AnomalySignal } from '../intelligence/anomaly';
 
 // ─── helpers ───────────────────────────────────────────────
 
@@ -43,9 +45,10 @@ const COOLDOWN_SEC     = 30;              // seconds between Generate clicks
 
 interface IntelBriefProps {
   events: VigilEvent[];
+  anomalySignals?: AnomalySignal[];
 }
 
-export function IntelBrief({ events }: IntelBriefProps) {
+export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
   const [brief, setBrief]             = useState<string | null>(null);
   const [source, setSource]           = useState<BriefSource>('local');
   const [loading, setLoading]         = useState(false);
@@ -93,7 +96,10 @@ export function IntelBrief({ events }: IntelBriefProps) {
     setExpanded(true);
     startCooldown();
 
-    const result = await generateBrief(events, 'Global');
+    const anomalyCtx = anomalySignals?.length
+      ? ' Anomaly signals: ' + anomalySummary(anomalySignals)
+      : '';
+    const result = await generateBrief(events, 'Global' + anomalyCtx);
 
     setBrief(result.brief);
     setSource(result.source);

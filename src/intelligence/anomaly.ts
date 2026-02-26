@@ -105,9 +105,20 @@ function regionLabel(
   return `${Math.abs(Math.round(cellLat))}°${ns} ${Math.abs(Math.round(cellLng))}°${ew}`;
 }
 
-// Satisfy TS: DOMAIN_COLORS is imported but used indirectly by consumers of
-// AnomalySignal who may want to colour by domain.  Re-export for convenience.
+// Re-export for consumers (e.g. AnomalyPanel) that need domain colours.
 export { DOMAIN_COLORS };
+
+/**
+ * Produce a compact text summary of anomaly signals for use as AI brief context.
+ * e.g. "3 signals — critical: Seismic Japan (3.1σ); significant: Health DRC (2.0σ)"
+ */
+export function anomalySummary(signals: AnomalySignal[]): string {
+  if (signals.length === 0) return 'no anomalies detected';
+  const parts = signals.slice(0, 4).map(
+    s => `${s.severity} ${s.domain} in ${s.regionLabel} (${s.zscore}σ, ${s.count} events)`
+  );
+  return `${signals.length} signal${signals.length > 1 ? 's' : ''} — ${parts.join('; ')}`;
+}
 
 // ─── Main export ──────────────────────────────────────────
 

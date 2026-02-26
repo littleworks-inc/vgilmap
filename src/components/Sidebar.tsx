@@ -8,6 +8,8 @@
 import type { VigilEvent, Domain } from '../types';
 import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
 import { IntelBrief } from './IntelBrief';
+import { AnomalyPanel } from './AnomalyPanel';
+import type { AnomalySignal } from '../intelligence/anomaly';
 
 interface SidebarProps {
   events: VigilEvent[];
@@ -17,6 +19,8 @@ interface SidebarProps {
   lastUpdated: Date | null;
   onSelectEvent: (event: VigilEvent) => void;
   onRefresh: () => void;
+  anomalySignals: AnomalySignal[];
+  onSelectSignal: (signal: AnomalySignal) => void;
 }
 
 /** Earthquake: coloured M-badge. Other domains: coloured dot with domain icon. */
@@ -112,6 +116,8 @@ export function Sidebar({
   lastUpdated,
   onSelectEvent,
   onRefresh,
+  anomalySignals,
+  onSelectSignal,
 }: SidebarProps) {
   const recent = events.slice(0, 10);
 
@@ -159,7 +165,10 @@ export function Sidebar({
       </div>
 
       {/* ── AI Intel Brief ───────────────────────────────────── */}
-      <IntelBrief events={events} />
+      <IntelBrief events={events} anomalySignals={anomalySignals} />
+
+      {/* ── Anomaly Signals ──────────────────────────────────── */}
+      <AnomalyPanel signals={anomalySignals} onSelectSignal={onSelectSignal} />
 
       {/* ── Domain legend ────────────────────────────────────── */}
       {(() => {
