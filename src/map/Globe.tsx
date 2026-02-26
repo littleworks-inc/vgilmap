@@ -38,9 +38,14 @@ const POPUP_SEVERITY_COLORS: Record<string, string> = {
   low: '#facc15', info: '#6b7280',
 };
 
-// Free tile style from Stadia Maps (no API key for low traffic)
+// Stadia Maps tile style. API key required for production (free tier available).
+// Set VITE_STADIA_API_KEY in .env.local (dev) and Vercel env vars (prod).
+// Register at: https://client.stadiamaps.com
+const _STADIA_KEY = import.meta.env.VITE_STADIA_API_KEY as string | undefined;
 const MAP_STYLE =
-  'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json';
+  _STADIA_KEY
+    ? `https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json?api_key=${_STADIA_KEY}`
+    : 'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json';
 
 // Fallback: public style from MapLibre demo (no key needed)
 const FALLBACK_STYLE: maplibregl.StyleSpecification = {
