@@ -57,7 +57,6 @@ export default defineConfig({
         },
       },
 
-      // WHO is fetched via rss2json.com — no proxy needed.
     },
   },
 })
