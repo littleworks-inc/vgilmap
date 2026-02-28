@@ -14,7 +14,6 @@ interface RWDisaster {
     country?: Array<{
       name: string;
       iso3?: string;
-      location?: { lat: number; lon: number };
       primary?: boolean;
     }>;
   };
@@ -56,7 +55,7 @@ export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
         include: [
           'name','status','date.created',
           'type.name',
-          'country.name','country.iso3','country.location','country.primary',
+          'country.name','country.iso3','country.primary',
         ],
       },
     }),
@@ -75,15 +74,9 @@ export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
     const primaryCountry = f.country?.find(c => c.primary) ?? f.country?.[0];
     if (!primaryCountry) continue;
 
-    let lat: number, lng: number;
-    if (primaryCountry.location?.lat != null) {
-      lat = primaryCountry.location.lat;
-      lng = primaryCountry.location.lon;
-    } else {
-      const fb = COUNTRY_COORDS[primaryCountry.name];
-      if (!fb) continue;
-      [lat, lng] = fb;
-    }
+    const fb = COUNTRY_COORDS[primaryCountry.name];
+    if (!fb) continue;
+    const [lat, lng] = fb;
 
     events.push({
       id: `rw-health-${item.id}`,
