@@ -172,14 +172,7 @@ function urlToId(url: string): string {
 
 // ─── Main fetch ────────────────────────────────────────────
 
-const GDELT_URL =
-  'https://api.gdeltproject.org/api/v2/doc/doc' +
-  '?query=(conflict+OR+killed+OR+airstrike+OR+bombing+OR+rebels+OR+troops)' +
-  '+sourcelang:english' +
-  '&mode=artlist' +
-  '&maxrecords=50' +
-  '&format=json' +
-  '&timespan=2d';
+const GDELT_URL = '/api/gdelt';
 
 export async function fetchGDELT(): Promise<VigilEvent[]> {
   const response = await fetch(GDELT_URL);

@@ -3,10 +3,8 @@ export const config = { runtime: 'edge' };
 export default async function handler(req: Request): Promise<Response> {
   try {
     const incoming = new URL(req.url);
-    // Extract everything after /api/noaa and forward to NWS
-    const after = incoming.pathname.replace(/^\/api\/noaa\/?/, '');
-    const nwsPath = after ? `/${after}` : '/alerts/active';
-    const nwsUrl  = `https://api.weather.gov${nwsPath}${incoming.search}`;
+    const qs = incoming.search;
+    const nwsUrl = `https://api.weather.gov/alerts/active${qs}`;
 
     const nwsRes = await fetch(nwsUrl, {
       headers: {
@@ -26,15 +24,9 @@ export default async function handler(req: Request): Promise<Response> {
       },
     });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: 'NOAA proxy error', detail: String(err) }),
-      {
-        status: 502,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      }
-    );
+    return new Response(JSON.stringify({ error: String(err) }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
   }
 }

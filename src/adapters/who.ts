@@ -142,16 +142,7 @@ function urlToId(url: string): string {
 
 // ─── GDELT query ──────────────────────────────────────────
 
-const GDELT_HEALTH_URL =
-  'https://api.gdeltproject.org/api/v2/doc/doc' +
-  '?query=(cholera+OR+ebola+OR+mpox+OR+dengue+OR+measles' +
-  '+OR+"bird+flu"+OR+outbreak+OR+epidemic+OR+marburg' +
-  '+OR+lassa+OR+typhoid+OR+monkeypox+OR+polio)' +
-  '+sourcelang:english' +
-  '&mode=artlist' +
-  '&maxrecords=30' +
-  '&format=json' +
-  '&timespan=3d';
+const GDELT_HEALTH_URL = '/api/gdelt-health';
 
 // ─── Main fetch ────────────────────────────────────────────
 

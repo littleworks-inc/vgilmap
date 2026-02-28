@@ -126,7 +126,7 @@ function getCentroid(geometry: GeoJSON.Geometry | null): { lat: number; lng: num
 // In production: point this at a Vercel Edge Function that does the same.
 // message_type=alert filters out Update/Cancel/etc. messages.
 // NWS /alerts/active does NOT support a "limit" parameter — omit it entirely.
-const NOAA_URL = '/api/noaa/alerts/active?message_type=alert';
+const NOAA_URL = '/api/noaa?message_type=alert';
 
 export async function fetchNOAAAlerts(): Promise<VigilEvent[]> {
   const response = await fetch(NOAA_URL);
