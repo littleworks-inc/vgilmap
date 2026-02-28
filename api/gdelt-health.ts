@@ -16,13 +16,22 @@ export default async function handler(_req: Request): Promise<Response> {
     const res = await fetch(GDELT_HEALTH_URL, {
       headers: { 'Accept': 'application/json' },
     });
-    const body = await res.arrayBuffer();
+    if (!res.ok) {
+      return new Response(JSON.stringify({ error: `GDELT ${res.status}` }), {
+        status: res.status,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+    const body = await res.text();
     return new Response(body, {
-      status: res.status,
+      status: 200,
       headers: {
-        'Content-Type': res.headers.get('Content-Type') ?? 'application/json',
+        'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=300',
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
       },
     });
   } catch (err) {
