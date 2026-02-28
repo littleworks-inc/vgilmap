@@ -65,13 +65,7 @@ function acledCategory(eventType: string): Category {
 
 // ─── Main fetch ────────────────────────────────────────────
 
-const ACLED_URL =
-  'https://api.acleddata.com/acled/read.php' +
-  '?terms=accept' +
-  '&limit=50' +
-  '&fields=data_id,event_date,event_type,sub_event_type,actor1,' +
-  'country,admin1,location,latitude,longitude,fatalities,notes,source,timestamp' +
-  '&format=json';
+const ACLED_URL = '/api/acled';
 
 export async function fetchACLED(): Promise<VigilEvent[]> {
   const response = await fetch(ACLED_URL);
