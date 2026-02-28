@@ -1,9 +1,10 @@
 /**
- * GDELT GKG Conflict Adapter
- * Uses GDELT's BigQuery-like CSV endpoint — no rate limits, no auth.
+ * GDELT Summary API — Conflict Adapter
+ * Uses GDELT's Summary API which is CORS-enabled; no proxy needed.
  * Falls back to empty array if unavailable.
  */
 import type { VigilEvent, Severity } from '../types';
+
 const COUNTRY_COORDS: Record<string, [number, number]> = {
   'AFGHANISTAN':[33.9,67.7],'UKRAINE':[48.4,31.2],'SYRIA':[34.8,38.9],
   'YEMEN':[15.6,48.5],'SOMALIA':[5.2,46.2],'SUDAN':[12.9,30.2],
@@ -20,12 +21,34 @@ const COUNTRY_COORDS: Record<string, [number, number]> = {
   'ISRAEL':[31.0,35.0],'RUSSIA':[61.5,105.3],'CHINA':[35.9,104.2],
   'UNITED STATES':[37.1,-95.7],'IRAN':[32.4,53.7],'TURKEY':[38.9,35.2],
 };
+
 function severityFromTitle(title: string): Severity {
   const t = title.toLowerCase();
   if (/killed|dead|massacre|airstrike|bombing|explosion/.test(t)) return 'high';
   if (/attack|clash|protest|strike|conflict|fighting/.test(t)) return 'medium';
   return 'low';
 }
+
+function extractCountry(title: string): [number, number] | null {
+  const t = title.toUpperCase();
+  for (const [country, coords] of Object.entries(COUNTRY_COORDS)) {
+    if (t.includes(country)) return coords;
+  }
+  return null;
+}
+
+interface GDELTSummaryArticle {
+  url: string;
+  title: string;
+  seendate: string;
+  domain: string;
+  sourcecountry: string;
+}
+
+interface GDELTSummaryResponse {
+  articles?: GDELTSummaryArticle[];
+}
+
 function urlToId(url: string): string {
   let h = 0;
   for (let i = 0; i < Math.min(url.length, 64); i++) {
@@ -33,35 +56,32 @@ function urlToId(url: string): string {
   }
   return Math.abs(h).toString(36);
 }
-// GDELT Doc API via our cached edge function proxy
-const GDELT_URL = '/api/gdelt';
-interface GDELTArticle {
-  url: string;
-  title: string;
-  seendate: string;
-  domain: string;
-  sourcecountry: string;
-}
-interface GDELTResponse { articles?: GDELTArticle[] }
+
 function seendateToISO(s: string): string {
-  const d = s.replace('Z','');
+  const d = s.replace('Z', '');
   if (d.length < 15) return new Date().toISOString();
   return `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}T${d.slice(9,11)}:${d.slice(11,13)}:${d.slice(13,15)}Z`;
 }
-function extractCountry(title: string): [number,number] | null {
-  const t = title.toUpperCase();
-  for (const [country, coords] of Object.entries(COUNTRY_COORDS)) {
-    if (t.includes(country)) return coords;
-  }
-  return null;
-}
+
+// GDELT Doc API v2 artlist — CORS-enabled, direct browser call
+const GDELT_URL =
+  'https://api.gdeltproject.org/api/v2/doc/doc' +
+  '?query=(conflict+OR+killed+OR+airstrike+OR+bombing+OR+protest' +
+  '+OR+clashes+OR+troops+OR+militia+OR+offensive+OR+ceasefire' +
+  '+OR+casualties+OR+shelling+OR+insurgency+OR+coup)' +
+  '+sourcelang:english' +
+  '&mode=artlist' +
+  '&maxrecords=50' +
+  '&format=json' +
+  '&timespan=2d';
+
 export async function fetchGDELT(): Promise<VigilEvent[]> {
   try {
     const res = await fetch(GDELT_URL, { headers: { 'Accept': 'application/json' } });
     if (!res.ok) throw new Error(`GDELT fetch failed: ${res.status}`);
     const text = await res.text();
     if (!text || !text.trimStart().startsWith('{')) return [];
-    const json: GDELTResponse = JSON.parse(text);
+    const json: GDELTSummaryResponse = JSON.parse(text);
     const events: VigilEvent[] = [];
     for (const article of json.articles ?? []) {
       if (!article.title) continue;
