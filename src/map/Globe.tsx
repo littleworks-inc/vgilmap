@@ -38,31 +38,31 @@ const POPUP_SEVERITY_COLORS: Record<string, string> = {
   low: '#facc15', info: '#6b7280',
 };
 
-// Stadia Maps tile style. API key required for production (free tier available).
-// Set VITE_STADIA_API_KEY in .env.local (dev) and Vercel env vars (prod).
-// Register at: https://client.stadiamaps.com
-const _STADIA_KEY = import.meta.env.VITE_STADIA_API_KEY as string | undefined;
-const MAP_STYLE =
-  _STADIA_KEY
-    ? `https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json?api_key=${_STADIA_KEY}`
-    : 'https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json';
-
-// Fallback: public style from MapLibre demo (no key needed)
-const FALLBACK_STYLE: maplibregl.StyleSpecification = {
+// CartoDB Dark Matter — free vector tiles, no API key required.
+// © CartoDB, © OpenStreetMap contributors
+const MAP_STYLE: maplibregl.StyleSpecification = {
   version: 8,
+  glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
   sources: {
-    'osm-tiles': {
+    'carto-tiles': {
       type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tiles: [
+        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+      ],
       tileSize: 256,
-      attribution: '© OpenStreetMap contributors',
+      attribution: '© <a href="https://carto.com">CartoDB</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+      maxzoom: 19,
     },
   },
   layers: [
     {
-      id: 'osm-tiles',
+      id: 'carto-tiles',
       type: 'raster',
-      source: 'osm-tiles',
+      source: 'carto-tiles',
+      minzoom: 0,
+      maxzoom: 22,
     },
   ],
 };
@@ -417,12 +417,6 @@ export function Globe({ events, onEventClick }: GlobeProps) {
       map.on('mouseleave', 'clusters', () => {
         map.getCanvas().style.cursor = '';
       });
-    });
-
-    // Fallback: if style 404s, load OSM
-    map.on('styleerror', () => {
-      console.warn('Globe: primary style failed, falling back to OSM');
-      map.setStyle(FALLBACK_STYLE as maplibregl.StyleSpecification);
     });
 
     mapRef.current = map;
