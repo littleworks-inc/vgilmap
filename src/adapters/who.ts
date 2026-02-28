@@ -109,7 +109,7 @@ export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
       : new Date().toISOString();
 
     events.push({
-      id: `promed-${Buffer.from(item.link).toString('base64').slice(0, 12)}`,
+      id: `promed-${btoa(item.link).slice(0, 12)}`,
       timestamp,
       domain: 'health',
       category: 'outbreak',
