@@ -273,6 +273,41 @@ export function Globe({ events, onEventClick }: GlobeProps) {
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
 
+    // ── Idle auto-pan ───────────────────────────────────
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let panFrame: number | null = null;
+    let isPanning = false;
+    const startPan = () => {
+      if (isPanning) return;
+      isPanning = true;
+      const pan = () => {
+        if (!isPanning) return;
+        map.panBy([0.4, 0], { duration: 0, animate: false });
+        panFrame = requestAnimationFrame(pan);
+      };
+      panFrame = requestAnimationFrame(pan);
+    };
+    const stopPan = () => {
+      isPanning = false;
+      if (panFrame) { cancelAnimationFrame(panFrame); panFrame = null; }
+    };
+    const resetIdle = () => {
+      stopPan();
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(startPan, 30000); // 30s idle → start pan
+    };
+    // Start idle timer
+    resetIdle();
+    // Stop panning on any user interaction
+    ['mousedown', 'wheel', 'touchstart', 'keydown'].forEach(evt => {
+      map.getContainer().addEventListener(evt, resetIdle, { passive: true });
+    });
+    // Store cleanup on the map for later
+    (map as any)._vigilCleanup = () => {
+      stopPan();
+      if (idleTimer) clearTimeout(idleTimer);
+    };
+
     // ── Add source + layer when style loads ───────────────
     map.on('load', () => {
       // If style failed, fall back to OSM raster
@@ -425,6 +460,7 @@ export function Globe({ events, onEventClick }: GlobeProps) {
     mapRef.current = map;
 
     return () => {
+      (map as any)._vigilCleanup?.();
       map.remove();
       mapRef.current = null;
     };

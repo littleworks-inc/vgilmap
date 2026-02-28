@@ -14,6 +14,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Globe } from './map/Globe';
 import { Sidebar } from './components/Sidebar';
 import { DomainFilter } from './components/DomainFilter';
+import { LiveTicker } from './components/LiveTicker';
+import { AnimatedCount } from './components/AnimatedCount';
 import { fetchUSGSEarthquakes } from './adapters/usgs';
 import { fetchUSGSSignificantWeek } from './adapters/usgs-significant-week';
 import { fetchNASAFirms } from './adapters/nasa-firms';
@@ -107,7 +109,7 @@ function DomainCountPill({
     <div
       style={{
         position: 'absolute',
-        bottom: '32px',
+        bottom: '48px',
         left: '12px',
         background: 'rgba(10,15,30,0.88)',
         border: '1px solid #1e293b',
@@ -128,7 +130,9 @@ function DomainCountPill({
       {active.map(([domain, count]) => (
         <span key={domain} style={{ whiteSpace: 'nowrap' }}>
           <span>{DOMAIN_ICONS[domain]}</span>{' '}
-          <strong style={{ color: '#e2e8f0' }}>{count.toLocaleString()}</strong>{' '}
+          <strong style={{ color: '#e2e8f0' }} className="vigil-count">
+            <AnimatedCount value={count} />
+          </strong>{' '}
           <span style={{ color: '#64748b' }}>{domainLabel(domain, count)}</span>
         </span>
       ))}
@@ -306,8 +310,11 @@ export default function App() {
             </div>
           )}
 
-          {/* Per-domain count pill */}
+          {/* Per-domain count pill — raised to clear the 36px ticker */}
           <DomainCountPill events={filteredEvents} lastUpdated={lastUpdated} />
+
+          {/* Live scrolling event ticker */}
+          <LiveTicker events={filteredEvents} onSelectEvent={handleSelectEvent} />
 
           {/* Partial failure badge */}
           {errors.length > 0 && !loading && (

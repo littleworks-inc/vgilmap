@@ -68,3 +68,26 @@ html, body, #root {
 .maplibregl-ctrl-attrib a {
   color: #64748b !important;
 }
+
+/* ── Live pulsing rings for critical map events ─────────── */
+@keyframes ring-pulse {
+  0%   { transform: scale(1);   opacity: 0.8; }
+  70%  { transform: scale(2.8); opacity: 0;   }
+  100% { transform: scale(2.8); opacity: 0;   }
+}
+.vigil-pulse-ring {
+  position: absolute;
+  border-radius: 50%;
+  animation: ring-pulse 2s ease-out infinite;
+  pointer-events: none;
+}
+/* Green live dot used in ticker */
+@keyframes livePulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px #22c55e; }
+  50%       { opacity: 0.5; box-shadow: 0 0 2px #22c55e; }
+}
+/* Smooth number transitions */
+.vigil-count {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
