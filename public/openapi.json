@@ -1,0 +1,99 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "VigilMap API",
+    "description": "Real-time global intelligence events API. Aggregates USGS earthquakes, NASA wildfires, NOAA weather alerts, conflict news, and disease outbreaks into a unified schema.",
+    "version": "1.0.0",
+    "contact": { "email": "contact@vigilmap.app" },
+    "license": { "name": "MIT" }
+  },
+  "servers": [{ "url": "https://vgilmap.vercel.app" }],
+  "paths": {
+    "/api/v1/events": {
+      "get": {
+        "summary": "List current global events",
+        "description": "Returns normalized global intelligence events from all active data sources. Cached for 5 minutes.",
+        "parameters": [
+          { "name": "domain", "in": "query", "description": "Comma-separated domains to include", "schema": { "type": "string", "example": "disaster,conflict" } },
+          { "name": "severity", "in": "query", "description": "Minimum severity level", "schema": { "type": "string", "enum": ["info","low","medium","high","critical"] } },
+          { "name": "limit", "in": "query", "description": "Max events to return (max 100)", "schema": { "type": "integer", "default": 100, "maximum": 100 } },
+          { "name": "since", "in": "query", "description": "ISO timestamp — only events after this time", "schema": { "type": "string", "format": "date-time" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "count": { "type": "integer" },
+                    "total": { "type": "integer" },
+                    "generated": { "type": "string", "format": "date-time" },
+                    "version": { "type": "string" },
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/VigilEvent" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/summary": {
+      "get": {
+        "summary": "Event counts by domain and severity",
+        "responses": {
+          "200": {
+            "description": "Summary statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "total_events": { "type": "integer" },
+                    "by_domain": { "type": "object" },
+                    "by_severity": { "type": "object" },
+                    "top_events": { "type": "array" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VigilEvent": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "domain": { "type": "string", "enum": ["disaster","climate","health","conflict","economic","labor","science"] },
+          "category": { "type": "string" },
+          "severity": { "type": "string", "enum": ["info","low","medium","high","critical"] },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "location": {
+            "type": "object",
+            "properties": {
+              "lat": { "type": "number" },
+              "lng": { "type": "number" },
+              "country": { "type": "string" },
+              "region": { "type": "string" },
+              "label": { "type": "string" }
+            }
+          },
+          "source": { "type": "string" },
+          "sourceUrl": { "type": "string" },
+          "confidence": { "type": "number" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}
