@@ -1,8 +1,12 @@
 {
   "rewrites": [
     {
-      "source": "/api/noaa/:path*",
-      "destination": "/api/noaa"
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
