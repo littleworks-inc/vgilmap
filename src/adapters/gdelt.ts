@@ -1,136 +1,92 @@
 /**
- * NASA EONET Adapter — Natural Disaster & Climate Events
- *
- * NASA's Earth Observatory Natural Event Tracker (EONET) provides
- * real-time natural event data. Free, no API key, CORS-enabled.
- *
- * API: https://eonet.gsfc.nasa.gov/docs/v3
+ * GDELT GKG Conflict Adapter
+ * Uses GDELT's BigQuery-like CSV endpoint — no rate limits, no auth.
+ * Falls back to empty array if unavailable.
  */
 import type { VigilEvent, Severity } from '../types';
-
-// ─── API types ─────────────────────────────────────────────
-
-interface EONETGeometry {
-  date: string;
-  type: 'Point' | 'Polygon';
-  coordinates: number[] | number[][][];   // GeoJSON: [lng, lat] for Point
-  magnitudeValue?: number | null;
-  magnitudeUnit?: string | null;
-}
-
-interface EONETEvent {
-  id: string;
-  title: string;
-  link: string;
-  description: string | null;
-  categories: Array<{ id: string; title: string }>;
-  sources: Array<{ id: string; url: string }>;
-  geometry: EONETGeometry[];
-}
-
-interface EONETResponse {
-  events: EONETEvent[];
-}
-
-// ─── Category → domain/category/severity map ───────────────
-
-interface CatMeta {
-  domain: 'climate' | 'disaster';
-  category: string;
-  baseSeverity: Severity;
-}
-
-const CATEGORY_MAP: Record<string, CatMeta> = {
-  wildfires:           { domain: 'disaster', category: 'wildfire',       baseSeverity: 'high'   },
-  volcanoes:           { domain: 'disaster', category: 'volcanic',       baseSeverity: 'high'   },
-  severeStorms:        { domain: 'climate',  category: 'extreme-weather', baseSeverity: 'medium' },
-  floods:              { domain: 'climate',  category: 'flood',           baseSeverity: 'medium' },
-  drought:             { domain: 'climate',  category: 'drought',         baseSeverity: 'low'    },
-  landslides:          { domain: 'disaster', category: 'landslide',       baseSeverity: 'medium' },
-  earthquakes:         { domain: 'disaster', category: 'earthquake',      baseSeverity: 'medium' },
-  seaLakeIce:          { domain: 'climate',  category: 'extreme-weather', baseSeverity: 'low'    },
-  snow:                { domain: 'climate',  category: 'extreme-weather', baseSeverity: 'low'    },
-  temperatureExtremes: { domain: 'climate',  category: 'extreme-weather', baseSeverity: 'medium' },
-  dustHaze:            { domain: 'climate',  category: 'extreme-weather', baseSeverity: 'low'    },
-  waterColor:          { domain: 'climate',  category: 'environmental',   baseSeverity: 'low'    },
-  manmade:             { domain: 'disaster', category: 'industrial',      baseSeverity: 'medium' },
+const COUNTRY_COORDS: Record<string, [number, number]> = {
+  'AFGHANISTAN':[33.9,67.7],'UKRAINE':[48.4,31.2],'SYRIA':[34.8,38.9],
+  'YEMEN':[15.6,48.5],'SOMALIA':[5.2,46.2],'SUDAN':[12.9,30.2],
+  'SOUTH SUDAN':[6.9,31.3],'MYANMAR':[21.9,96.0],'IRAQ':[33.2,43.7],
+  'NIGERIA':[9.1,8.7],'ETHIOPIA':[9.1,40.5],'MALI':[17.6,-4.0],
+  'BURKINA FASO':[12.4,-1.5],'NIGER':[17.6,8.1],'CHAD':[15.5,18.7],
+  'LIBYA':[26.3,17.2],'PALESTINE':[31.9,35.2],'HAITI':[18.9,-72.3],
+  'COLOMBIA':[4.6,-74.1],'VENEZUELA':[6.4,-66.6],'PAKISTAN':[30.4,69.3],
+  'INDIA':[20.6,79.0],'INDONESIA':[-0.8,113.9],'PHILIPPINES':[12.9,121.8],
+  'MEXICO':[23.6,-102.5],'BRAZIL':[-14.2,-51.9],'CONGO':[-4.0,21.8],
+  'DEMOCRATIC REPUBLIC OF THE CONGO':[-4.0,21.8],
+  'CENTRAL AFRICAN REPUBLIC':[6.6,20.9],'CAMEROON':[3.8,11.5],
+  'MOZAMBIQUE':[-18.7,35.5],'KENYA':[-0.0,37.9],'UGANDA':[1.4,32.3],
+  'ISRAEL':[31.0,35.0],'RUSSIA':[61.5,105.3],'CHINA':[35.9,104.2],
+  'UNITED STATES':[37.1,-95.7],'IRAN':[32.4,53.7],'TURKEY':[38.9,35.2],
 };
-
-function eonetSeverity(catId: string, title: string): Severity {
-  const base = CATEGORY_MAP[catId]?.baseSeverity ?? 'low';
+function severityFromTitle(title: string): Severity {
   const t = title.toLowerCase();
-  // Escalate well-known high-impact keywords
-  if (/major|extreme|catastrophic|category [45]|super/.test(t)) return 'critical';
-  if (/large|significant|intense|severe/.test(t) && base === 'low') return 'medium';
-  return base;
+  if (/killed|dead|massacre|airstrike|bombing|explosion/.test(t)) return 'high';
+  if (/attack|clash|protest|strike|conflict|fighting/.test(t)) return 'medium';
+  return 'low';
 }
-
-// ─── Main fetch ────────────────────────────────────────────
-
-const EONET_URL =
-  'https://eonet.gsfc.nasa.gov/api/v3/events' +
-  '?status=open&limit=50&days=14';
-
+function urlToId(url: string): string {
+  let h = 0;
+  for (let i = 0; i < Math.min(url.length, 64); i++) {
+    h = ((h << 5) - h + url.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h).toString(36);
+}
+// GDELT Doc API via our cached edge function proxy
+const GDELT_URL = '/api/gdelt';
+interface GDELTArticle {
+  url: string;
+  title: string;
+  seendate: string;
+  domain: string;
+  sourcecountry: string;
+}
+interface GDELTResponse { articles?: GDELTArticle[] }
+function seendateToISO(s: string): string {
+  const d = s.replace('Z','');
+  if (d.length < 15) return new Date().toISOString();
+  return `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}T${d.slice(9,11)}:${d.slice(11,13)}:${d.slice(13,15)}Z`;
+}
+function extractCountry(title: string): [number,number] | null {
+  const t = title.toUpperCase();
+  for (const [country, coords] of Object.entries(COUNTRY_COORDS)) {
+    if (t.includes(country)) return coords;
+  }
+  return null;
+}
 export async function fetchGDELT(): Promise<VigilEvent[]> {
   try {
-  const res = await fetch(EONET_URL, {
-    headers: { 'Accept': 'application/json' },
-  });
-
-  if (!res.ok) {
-    throw new Error(`EONET fetch failed: ${res.status} ${res.statusText}`);
-  }
-
-  const json: EONETResponse = await res.json();
-  const events: VigilEvent[] = [];
-
-  for (const ev of json.events ?? []) {
-    // Need at least one geometry with coordinates
-    const geo = ev.geometry?.[0];
-    if (!geo || geo.type !== 'Point') continue;
-
-    const coords = geo.coordinates as number[];
-    const lng = coords[0];
-    const lat = coords[1];
-    if (lat == null || lng == null) continue;
-
-    // Use first category
-    const cat = ev.categories?.[0];
-    const catId = cat?.id ?? 'manmade';
-    const meta = CATEGORY_MAP[catId] ?? { domain: 'disaster', category: 'other', baseSeverity: 'low' };
-    const sourceUrl = ev.sources?.[0]?.url ?? ev.link;
-
-    events.push({
-      id: `eonet-${ev.id}`,
-      timestamp: geo.date,
-      domain: meta.domain,
-      category: meta.category,
-      severity: eonetSeverity(catId, ev.title),
-      title: ev.title,
-      description: ev.description ?? `${cat?.title ?? 'Natural event'} tracked by NASA EONET.`,
-      location: {
-        lat,
-        lng,
-        country: '',
-        region: '',
-        label: ev.title,
-      },
-      source: 'NASA EONET',
-      sourceUrl: sourceUrl ?? 'https://eonet.gsfc.nasa.gov',
-      confidence: 0.95,
-      tags: [catId, meta.category, meta.domain],
-      metadata: {
-        eonet_id: ev.id,
-        category: cat?.title,
-        magnitude: geo.magnitudeValue,
-        magnitude_unit: geo.magnitudeUnit,
-      },
-    });
-  }
-
+    const res = await fetch(GDELT_URL, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error(`GDELT fetch failed: ${res.status}`);
+    const text = await res.text();
+    if (!text || !text.trimStart().startsWith('{')) return [];
+    const json: GDELTResponse = JSON.parse(text);
+    const events: VigilEvent[] = [];
+    for (const article of json.articles ?? []) {
+      if (!article.title) continue;
+      const coords = extractCountry(article.title);
+      if (!coords) continue;
+      const [lat, lng] = coords;
+      events.push({
+        id: `gdelt-${urlToId(article.url)}`,
+        timestamp: seendateToISO(article.seendate ?? ''),
+        domain: 'conflict',
+        category: 'armed-conflict',
+        severity: severityFromTitle(article.title),
+        title: article.title,
+        description: `Reported by ${article.domain}.`,
+        location: { lat, lng, country: article.sourcecountry ?? '', region: '', label: article.sourcecountry ?? '' },
+        source: 'GDELT',
+        sourceUrl: article.url,
+        confidence: 0.70,
+        tags: ['conflict', 'news'],
+        metadata: { domain: article.domain },
+      });
+    }
     return events;
   } catch (err) {
-    console.warn('[EONET] temporarily unavailable:', err);
+    console.warn('[GDELT] unavailable:', err);
     return [];
   }
 }
