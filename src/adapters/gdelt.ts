@@ -73,25 +73,29 @@ function rwSeverity(status: string, typeName: string): Severity {
   return status === 'current' ? 'medium' : 'low';
 }
 
-const RW_URL =
-  'https://api.reliefweb.int/v2/disasters' +
-  '?appname=vigilmap' +
-  '&preset=latest' +
-  '&limit=50' +
-  '&fields[include][]=name' +
-  '&fields[include][]=status' +
-  '&fields[include][]=date.created' +
-  '&fields[include][]=type.name' +
-  '&fields[include][]=type.primary' +
-  '&fields[include][]=country.name' +
-  '&fields[include][]=country.iso3' +
-  '&fields[include][]=country.location' +
-  '&fields[include][]=country.primary' +
-  '&fields[include][]=glide';
+const RW_URL = 'https://api.reliefweb.int/v2/disasters?appname=vigilmap';
+
+const RW_BODY = JSON.stringify({
+  preset: 'latest',
+  limit: 50,
+  fields: {
+    include: [
+      'name', 'status', 'date.created',
+      'type.name', 'type.primary',
+      'country.name', 'country.iso3', 'country.location', 'country.primary',
+      'glide',
+    ],
+  },
+});
 
 export async function fetchGDELT(): Promise<VigilEvent[]> {
   const res = await fetch(RW_URL, {
-    headers: { 'Accept': 'application/json' },
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: RW_BODY,
   });
 
   if (!res.ok) {

@@ -54,25 +54,32 @@ function healthSeverity(status: string, name: string): Severity {
 }
 
 // Filter to only epidemic/health disaster types
-const RW_HEALTH_URL =
-  'https://api.reliefweb.int/v2/disasters' +
-  '?appname=vigilmap' +
-  '&preset=latest' +
-  '&limit=30' +
-  '&filter[field]=type.name' +
-  '&filter[value]=Epidemic' +
-  '&fields[include][]=name' +
-  '&fields[include][]=status' +
-  '&fields[include][]=date.created' +
-  '&fields[include][]=type.name' +
-  '&fields[include][]=country.name' +
-  '&fields[include][]=country.iso3' +
-  '&fields[include][]=country.location' +
-  '&fields[include][]=country.primary';
+const RW_HEALTH_URL = 'https://api.reliefweb.int/v2/disasters?appname=vigilmap';
+
+const RW_HEALTH_BODY = JSON.stringify({
+  preset: 'latest',
+  limit: 30,
+  filter: {
+    field: 'type.name',
+    value: 'Epidemic',
+  },
+  fields: {
+    include: [
+      'name', 'status', 'date.created',
+      'type.name',
+      'country.name', 'country.iso3', 'country.location', 'country.primary',
+    ],
+  },
+});
 
 export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
   const res = await fetch(RW_HEALTH_URL, {
-    headers: { 'Accept': 'application/json' },
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: RW_HEALTH_BODY,
   });
 
   if (!res.ok) {
