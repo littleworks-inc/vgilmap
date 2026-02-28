@@ -42,6 +42,7 @@ const POPUP_SEVERITY_COLORS: Record<string, string> = {
 // © CartoDB, © OpenStreetMap contributors
 const MAP_STYLE: maplibregl.StyleSpecification = {
   version: 8,
+  glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
   sources: {
     'carto-tiles': {
       type: 'raster',
@@ -317,20 +318,19 @@ export function Globe({ events, onEventClick }: GlobeProps) {
       // ── Cluster count labels ─────────────────────────────
       map.addLayer({
         id: 'cluster-count',
-        type: 'circle',
+        type: 'symbol',
         source: SOURCE_ID,
         filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': 12,
+          'text-allow-overlap': true,
+        },
         paint: {
-          'circle-color': 'rgba(255,255,255,0.15)',
-          'circle-radius': [
-            'step',
-            ['get', 'point_count'],
-            8,
-            10, 11,
-            30, 14,
-          ],
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': 'rgba(255,255,255,0.6)',
+          'text-color': '#ffffff',
+          'text-halo-color': 'rgba(0,0,0,0.3)',
+          'text-halo-width': 1,
         },
       });
 
