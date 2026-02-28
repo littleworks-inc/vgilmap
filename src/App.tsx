@@ -19,7 +19,6 @@ import { fetchUSGSSignificantWeek } from './adapters/usgs-significant-week';
 import { fetchNASAFirms } from './adapters/nasa-firms';
 import { fetchNOAAAlerts } from './adapters/noaa';
 import { fetchGDELT } from './adapters/gdelt';
-import { fetchACLED } from './adapters/acled';
 import { fetchWHOOutbreaks } from './adapters/who';
 import type { Domain, VigilEvent } from './types';
 import { DOMAIN_ICONS } from './types';
@@ -46,7 +45,6 @@ const ADAPTERS: Array<{
   { key: 'nasa-firms', label: 'NASA FIRMS',        fetch: fetchNASAFirms },
   { key: 'noaa',       label: 'NOAA Alerts',       fetch: fetchNOAAAlerts },
   { key: 'gdelt',      label: 'GDELT Conflict',     fetch: fetchGDELT },
-  { key: 'acled',      label: 'ACLED Conflict',     fetch: fetchACLED },
   { key: 'who',        label: 'WHO Outbreaks',     fetch: fetchWHOOutbreaks },
 ];
 

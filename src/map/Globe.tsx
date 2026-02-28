@@ -323,7 +323,7 @@ export function Globe({ events, onEventClick }: GlobeProps) {
         filter: ['has', 'point_count'],
         layout: {
           'text-field': ['get', 'point_count_abbreviated'],
-          'text-font': ['Noto_Sans_Bold'],
+          'text-font': ['Noto Sans Medium'],
           'text-size': 12,
           'text-allow-overlap': true,
         },
