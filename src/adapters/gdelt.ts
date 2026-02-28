@@ -12,7 +12,6 @@ interface RWDisaster {
     country?: Array<{
       name: string;
       iso3?: string;
-      location?: { lat: number; lon: number };
       primary?: boolean;
     }>;
     glide?: string;
@@ -53,7 +52,7 @@ export async function fetchGDELT(): Promise<VigilEvent[]> {
         include: [
           'name','status','date.created',
           'type.name','type.primary',
-          'country.name','country.iso3','country.location','country.primary',
+          'country.name','country.iso3','country.primary',
           'glide',
         ],
       },
@@ -69,15 +68,9 @@ export async function fetchGDELT(): Promise<VigilEvent[]> {
     const f = item.fields;
     const primaryCountry = f.country?.find(c => c.primary) ?? f.country?.[0];
     if (!primaryCountry) continue;
-    let lat: number, lng: number;
-    if (primaryCountry.location?.lat != null) {
-      lat = primaryCountry.location.lat;
-      lng = primaryCountry.location.lon;
-    } else {
-      const fb = COUNTRY_COORDS[primaryCountry.name];
-      if (!fb) continue;
-      [lat, lng] = fb;
-    }
+    const fb = COUNTRY_COORDS[primaryCountry.name];
+    if (!fb) continue;
+    const [lat, lng] = fb;
     const primaryType = f.type?.find(t => t.primary) ?? f.type?.[0];
     const typeName = primaryType?.name ?? 'Unknown';
     const isConflict = CONFLICT_TYPES.has(typeName);
