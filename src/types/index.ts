@@ -94,7 +94,7 @@ export const SEVERITY_COLORS: Record<Severity, string> = {
 
 export const DOMAIN_COLORS: Record<Domain, string> = {
   disaster: '#ef4444',
-  climate: '#f97316',
+  climate: '#22d3ee',
   health: '#ec4899',
   conflict: '#7c3aed',
   economic: '#eab308',

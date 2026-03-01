@@ -26,7 +26,7 @@ const SOURCE_ID = 'vigil-events';
 // Inline copies of domain/severity maps — popup HTML is a plain string,
 // can't reference module-level imports at serialization time.
 const POPUP_DOMAIN_COLORS: Record<string, string> = {
-  disaster: '#ef4444', climate: '#f97316', health: '#ec4899',
+  disaster: '#ef4444', climate: '#22d3ee', health: '#ec4899',
   conflict: '#7c3aed', economic: '#eab308', labor: '#3b82f6', science: '#10b981',
 };
 const POPUP_DOMAIN_ICONS: Record<string, string> = {
