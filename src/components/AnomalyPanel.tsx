@@ -123,18 +123,28 @@ export function AnomalyPanel({ signals, onSelectSignal }: AnomalyPanelProps) {
                       {signal.label}
                     </span>
                   </span>
-                  <span style={{
-                    fontSize: '10px',
-                    color: sevColor,
-                    fontWeight: 700,
-                    flexShrink: 0,
-                    marginLeft: '6px',
-                  }}>
-                    {signal.zscore}σ
-                  </span>
                 </div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                  {signal.count} events · {signal.severity}
+                <div style={{
+                  fontSize: '11px', color: '#64748b',
+                  marginTop: '2px', display: 'flex',
+                  alignItems: 'center', gap: '6px',
+                }}>
+                  {signal.count} events
+                  <span style={{
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    letterSpacing: '0.6px',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    border: `1px solid ${sevColor}66`,
+                    color: sevColor,
+                    background: `${sevColor}11`,
+                    textTransform: 'uppercase',
+                  }}>
+                    {signal.severity === 'critical'    ? '⚠ Extreme'  :
+                     signal.severity === 'significant' ? '↑ Elevated' :
+                                                         '~ Mild'}
+                  </span>
                 </div>
               </button>
             );
