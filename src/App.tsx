@@ -16,6 +16,8 @@ import { Sidebar } from './components/Sidebar';
 import { DomainFilter } from './components/DomainFilter';
 import { LiveTicker } from './components/LiveTicker';
 import { AnimatedCount } from './components/AnimatedCount';
+import { useIsMobile } from './hooks/useIsMobile';
+import { MobileDrawer } from './components/MobileDrawer';
 import { fetchUSGSEarthquakes } from './adapters/usgs';
 import { fetchUSGSSignificantWeek } from './adapters/usgs-significant-week';
 import { fetchNASAFirms } from './adapters/nasa-firms';
@@ -156,6 +158,7 @@ export default function App() {
   const [activeDomains, setActiveDomains] = useState<Set<Domain>>(new Set(ALL_DOMAINS));
 
   const globeContainerRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   // ── Fetch all adapters in parallel ──────────────────────
   const load = useCallback(async () => {
@@ -247,32 +250,31 @@ export default function App() {
 
   // ── Render ───────────────────────────────────────────────
   return (
-    <div
-      style={{
-        display: 'flex',
-        height: '100vh',
-        width: '100vw',
-        overflow: 'hidden',
-        background: '#0a0f1e',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-      }}
-    >
-      {/* Sidebar */}
-      <Sidebar
-        events={filteredEvents}
-        selectedId={selectedId}
-        loading={loading}
-        error={errorMsg}
-        lastUpdated={lastUpdated}
-        onSelectEvent={handleSelectEvent}
-        onRefresh={load}
-        anomalySignals={anomalySignals}
-        onSelectSignal={handleSelectSignal}
-      />
+    <div style={{
+      display: 'flex',
+      height: '100vh',
+      width: '100vw',
+      overflow: 'hidden',
+      background: '#0a0f1e',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+    }}>
+      {/* Desktop sidebar — hidden on mobile */}
+      {!isMobile && (
+        <Sidebar
+          events={filteredEvents}
+          selectedId={selectedId}
+          loading={loading}
+          error={errorMsg}
+          lastUpdated={lastUpdated}
+          onSelectEvent={handleSelectEvent}
+          onRefresh={load}
+          anomalySignals={anomalySignals}
+          onSelectSignal={handleSelectSignal}
+        />
+      )}
 
-      {/* Right pane: filter bar + map */}
+      {/* Map pane — full screen on mobile */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
         <DomainFilter
           activeDomains={activeDomains}
           counts={domainCounts}
@@ -284,22 +286,14 @@ export default function App() {
         <div ref={globeContainerRef} style={{ flex: 1, position: 'relative' }}>
           <Globe events={filteredEvents} onEventClick={handleEventClickOnMap} />
 
-          {/* Initial loading overlay */}
+          {/* Loading overlay */}
           {loading && allEvents.length === 0 && (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'rgba(10,15,30,0.75)',
-                color: '#94a3b8',
-                fontSize: '14px',
-                pointerEvents: 'none',
-                zIndex: 10,
-              }}
-            >
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(10,15,30,0.75)', color: '#94a3b8',
+              fontSize: '14px', pointerEvents: 'none', zIndex: 10,
+            }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '36px', marginBottom: '10px' }}>🌍</div>
                 <div>Loading global intelligence data…</div>
@@ -310,34 +304,43 @@ export default function App() {
             </div>
           )}
 
-          {/* Per-domain count pill — raised to clear the 36px ticker */}
+          {/* Count pill — raise above drawer on mobile */}
           <DomainCountPill events={filteredEvents} lastUpdated={lastUpdated} />
 
-          {/* Live scrolling event ticker */}
-          <LiveTicker events={filteredEvents} onSelectEvent={handleSelectEvent} />
+          {/* Live ticker — desktop only (drawer replaces it on mobile) */}
+          {!isMobile && (
+            <LiveTicker events={filteredEvents} onSelectEvent={handleSelectEvent} />
+          )}
 
-          {/* Partial failure badge */}
+          {/* Error badge */}
           {errors.length > 0 && !loading && (
-            <div
-              style={{
-                position: 'absolute',
-                top: '12px',
-                left: '12px',
-                background: 'rgba(239,68,68,0.12)',
-                border: '1px solid #ef4444',
-                borderRadius: '8px',
-                padding: '5px 10px',
-                fontSize: '11px',
-                color: '#fca5a5',
-                zIndex: 5,
-                pointerEvents: 'none',
-              }}
-            >
+            <div style={{
+              position: 'absolute', top: '12px', left: '12px',
+              background: 'rgba(239,68,68,0.12)', border: '1px solid #ef4444',
+              borderRadius: '8px', padding: '5px 10px',
+              fontSize: '11px', color: '#fca5a5',
+              zIndex: 5, pointerEvents: 'none',
+            }}>
               ⚠ {errors.join(', ')} unavailable
             </div>
           )}
         </div>
       </div>
+
+      {/* Mobile bottom drawer — replaces sidebar on small screens */}
+      {isMobile && (
+        <MobileDrawer
+          events={filteredEvents}
+          selectedId={selectedId}
+          loading={loading}
+          error={errorMsg}
+          lastUpdated={lastUpdated}
+          onSelectEvent={handleSelectEvent}
+          onRefresh={load}
+          anomalySignals={anomalySignals}
+          onSelectSignal={handleSelectSignal}
+        />
+      )}
     </div>
   );
 }

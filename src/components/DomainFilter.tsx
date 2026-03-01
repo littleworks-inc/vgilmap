@@ -58,13 +58,16 @@ export function DomainFilter({
         display: 'flex',
         alignItems: 'center',
         gap: '6px',
-        flexWrap: 'wrap',
+        flexWrap: 'nowrap',
+        overflowX: 'auto' as const,
+        WebkitOverflowScrolling: 'touch' as const,
         padding: '8px 12px',
         background: 'rgba(10,15,30,0.88)',
         backdropFilter: 'blur(8px)',
         borderBottom: '1px solid #1e293b',
         zIndex: 10,
         position: 'relative',
+        scrollbarWidth: 'none',
       }}
     >
       {/* All / None shortcuts */}
@@ -167,4 +170,5 @@ const pillBase: React.CSSProperties = {
   transition: 'all 0.15s ease',
   whiteSpace: 'nowrap',
   lineHeight: 1.4,
+  flexShrink: 0,
 };

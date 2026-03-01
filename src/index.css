@@ -91,3 +91,35 @@ html, body, #root {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
+
+/* ── Mobile touch improvements ─────────────────────────── */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+/* Prevent overscroll bounce on iOS */
+html, body {
+  overscroll-behavior: none;
+}
+/* Smooth momentum scrolling in drawers */
+.mobile-scroll {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+/* Hide scrollbar on domain filter strip */
+.maplibregl-ctrl-attrib-inner a,
+div[style*="overflowX"]::-webkit-scrollbar {
+  display: none;
+}
+/* Larger tap targets on mobile */
+@media (max-width: 767px) {
+  button {
+    min-height: 36px;
+  }
+  /* Push map content above the peek drawer */
+  .maplibregl-ctrl-bottom-right {
+    bottom: 120px !important;
+  }
+  .maplibregl-ctrl-top-right {
+    top: 56px !important;
+  }
+}
