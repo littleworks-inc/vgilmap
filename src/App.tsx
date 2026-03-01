@@ -37,6 +37,19 @@ const ALL_DOMAINS: Domain[] = [
   'disaster', 'climate', 'health', 'conflict', 'economic', 'labor', 'science',
 ];
 
+// ─── URL helpers ───────────────────────────────────────────
+
+function getEventIdFromURL(): string | null {
+  return new URLSearchParams(window.location.search).get('event');
+}
+
+function pushEventToURL(id: string | undefined) {
+  const url = new URL(window.location.href);
+  if (id) { url.searchParams.set('event', id); }
+  else     { url.searchParams.delete('event'); }
+  history.replaceState(null, '', url.toString());
+}
+
 // ─── Adapter registry ──────────────────────────────────────
 
 const ADAPTERS: Array<{
@@ -154,10 +167,11 @@ export default function App() {
   const [loading, setLoading]           = useState(true);
   const [errors, setErrors]             = useState<string[]>([]);
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null);
-  const [selectedId, setSelectedId]     = useState<string | undefined>();
+  const [selectedId, setSelectedId]     = useState<string | undefined>(getEventIdFromURL() ?? undefined);
   const [activeDomains, setActiveDomains] = useState<Set<Domain>>(new Set(ALL_DOMAINS));
 
   const globeContainerRef = useRef<HTMLDivElement>(null);
+  const hasDeepLinked     = useRef(false);
   const isMobile = useIsMobile();
 
   // ── Fetch all adapters in parallel ──────────────────────
@@ -230,13 +244,25 @@ export default function App() {
     container?.__flyTo?.(ev.location.lat, ev.location.lng, 6);
   }, []);
 
+  // ── Deep-link: fly to event from URL on first load ───────
+  useEffect(() => {
+    if (hasDeepLinked.current) return;
+    if (!selectedId || allEvents.length === 0) return;
+    const ev = allEvents.find(e => e.id === selectedId);
+    if (!ev) return;
+    hasDeepLinked.current = true;
+    flyToEvent(ev);
+  }, [allEvents, selectedId, flyToEvent]);
+
   const handleSelectEvent = useCallback((ev: VigilEvent) => {
     setSelectedId(ev.id);
+    pushEventToURL(ev.id);
     flyToEvent(ev);
   }, [flyToEvent]);
 
   const handleEventClickOnMap = useCallback((ev: VigilEvent) => {
     setSelectedId(ev.id);
+    pushEventToURL(ev.id);
   }, []);
 
   const handleSelectSignal = useCallback((signal: AnomalySignal) => {

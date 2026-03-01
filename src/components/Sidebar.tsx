@@ -109,6 +109,42 @@ function timeAgo(isoString: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+// ─── Share button ───────────────────────────────────────────
+
+function ShareButton({ eventId }: { eventId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation(); // don't trigger row click
+    const url = new URL(window.location.href);
+    url.searchParams.set('event', eventId);
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {/* silent fail */});
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy link to this event"
+      style={{
+        background: 'none',
+        border: 'none',
+        padding: '0 2px',
+        cursor: 'pointer',
+        color: copied ? '#22c55e' : '#334155',
+        fontSize: '12px',
+        lineHeight: 1,
+        transition: 'color 0.2s',
+        flexShrink: 0,
+      }}
+    >
+      {copied ? '✓' : '⎘'}
+    </button>
+  );
+}
+
 export function Sidebar({
   events,
   selectedId,
@@ -378,10 +414,12 @@ export function Sidebar({
                     display: 'flex',
                     gap: '8px',
                     flexWrap: 'wrap',
+                    alignItems: 'center',
                   }}
                 >
                   <span>{timeAgo(ev.timestamp)}</span>
                   <EventMeta event={ev} />
+                  <ShareButton eventId={ev.id} />
                 </div>
               </div>
             </button>
