@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VigilMap API — Documentation</title>
+  <meta name="description" content="Free REST API for real-time global intelligence events — earthquakes, wildfires, weather alerts, conflict, and disease outbreaks." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:       #070b14;
+      --surface:  #0d1422;
+      --border:   #1a2540;
+      --border2:  #243050;
+      --text:     #c9d8f0;
+      --muted:    #4a6080;
+      --accent:   #3b82f6;
+      --accent2:  #22d3ee;
+      --green:    #22c55e;
+      --orange:   #f97316;
+      --red:      #ef4444;
+      --purple:   #a78bfa;
+      --pink:     #ec4899;
+      --yellow:   #facc15;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    /* ── Scanline texture ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(255,255,255,0.012) 2px,
+        rgba(255,255,255,0.012) 3px
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Grid background ── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 48px 48px;
+      opacity: 0.35;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ── */
+    .shell {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar nav ── */
+    nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      border-right: 1px solid var(--border);
+      background: rgba(7,11,20,0.92);
+      backdrop-filter: blur(12px);
+      padding: 32px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .nav-logo {
+      padding: 0 24px 28px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .nav-logo a {
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .nav-logo .globe { font-size: 22px; }
+    .nav-logo .wordmark {
+      font-size: 18px;
+      font-weight: 800;
+      color: #f1f5f9;
+      letter-spacing: -0.02em;
+    }
+    .nav-logo .badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      background: var(--accent);
+      color: white;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .nav-section {
+      padding: 6px 24px 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-top: 12px;
+    }
+
+    nav a {
+      display: block;
+      padding: 7px 24px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      transition: color 0.15s, background 0.15s;
+      border-left: 2px solid transparent;
+    }
+    nav a:hover {
+      color: var(--text);
+      background: rgba(59,130,246,0.06);
+    }
+    nav a.active {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      background: rgba(59,130,246,0.08);
+    }
+
+    .nav-status {
+      margin-top: auto;
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+    }
+    .status-dot {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--green);
+    }
+    .status-dot::before {
+      content: '';
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 6px var(--green); }
+      50%       { opacity: 0.5; box-shadow: 0 0 2px var(--green); }
+    }
+
+    /* ── Main content ── */
+    main {
+      padding: 64px 72px;
+      max-width: 900px;
+    }
+
+    /* ── Sections ── */
+    section {
+      margin-bottom: 80px;
+      opacity: 0;
+      transform: translateY(16px);
+      animation: fadeUp 0.5s ease forwards;
+    }
+    section:nth-child(1) { animation-delay: 0.05s; }
+    section:nth-child(2) { animation-delay: 0.1s; }
+    section:nth-child(3) { animation-delay: 0.15s; }
+    section:nth-child(4) { animation-delay: 0.2s; }
+    section:nth-child(5) { animation-delay: 0.25s; }
+    section:nth-child(6) { animation-delay: 0.3s; }
+    @keyframes fadeUp {
+      to { opacity: 1; transform: none; }
+    }
+
+    /* ── Hero ── */
+    .hero-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    h1 {
+      font-size: 52px;
+      font-weight: 800;
+      line-height: 1.05;
+      color: #f1f5f9;
+      letter-spacing: -0.03em;
+      margin-bottom: 20px;
+    }
+    h1 span { color: var(--accent2); }
+
+    .hero-sub {
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 560px;
+      line-height: 1.7;
+      margin-bottom: 32px;
+    }
+
+    .hero-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 40px;
+    }
+    .chip {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid;
+      font-weight: 500;
+    }
+    .chip-green  { color: var(--green);  border-color: var(--green);  background: rgba(34,197,94,0.07); }
+    .chip-blue   { color: var(--accent); border-color: var(--accent); background: rgba(59,130,246,0.07); }
+    .chip-cyan   { color: var(--accent2);border-color: var(--accent2);background: rgba(34,211,238,0.07); }
+    .chip-orange { color: var(--orange); border-color: var(--orange); background: rgba(249,115,22,0.07); }
+
+    .hero-curl {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .curl-bar {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .curl-bar .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .curl-bar .dot:nth-child(1) { background: #ef4444; }
+    .curl-bar .dot:nth-child(2) { background: #f97316; }
+    .curl-bar .dot:nth-child(3) { background: #22c55e; }
+    .curl-code {
+      padding: 20px 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .c-dim    { color: var(--muted); }
+    .c-cmd    { color: var(--accent2); }
+    .c-url    { color: var(--accent); }
+    .c-key    { color: var(--purple); }
+    .c-val    { color: var(--green); }
+    .c-str    { color: var(--yellow); }
+    .c-num    { color: var(--orange); }
+    .c-bool   { color: var(--pink); }
+
+    /* ── Headings ── */
+    h2 {
+      font-size: 28px;
+      font-weight: 800;
+      color: #f1f5f9;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    h2::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #e2e8f0;
+      margin: 28px 0 12px;
+    }
+
+    p { color: var(--muted); margin-bottom: 16px; }
+    p strong { color: var(--text); }
+
+    /* ── Endpoint cards ── */
+    .endpoint {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 28px;
+    }
+    .endpoint-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .method {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 5px;
+      background: rgba(34,197,94,0.15);
+      color: var(--green);
+      border: 1px solid rgba(34,197,94,0.3);
+      letter-spacing: 0.05em;
+    }
+    .endpoint-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: #f1f5f9;
+      font-weight: 500;
+    }
+    .endpoint-desc {
+      font-size: 13px;
+      color: var(--muted);
+      margin-left: auto;
+    }
+    .endpoint-body { padding: 20px; }
+
+    /* ── Params table ── */
+    .param-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+    .param-table thead th {
+      text-align: left;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      text-transform: uppercase;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .param-table tbody td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .param-table tbody tr:last-child td { border-bottom: none; }
+    .param-name {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--accent2);
+      font-size: 12px;
+    }
+    .param-type {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--purple);
+    }
+    .param-desc { color: var(--muted); font-size: 13px; }
+    .param-opt {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      background: var(--border);
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+
+    /* ── Code blocks ── */
+    .code-block {
+      position: relative;
+      background: #060a12;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .code-block pre {
+      padding: 16px 18px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.7;
+      overflow-x: auto;
+      color: var(--text);
+    }
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: var(--border2);
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+    .copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+    /* ── Try it console ── */
+    .try-it {
+      background: #060a12;
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 24px;
+    }
+    .try-it-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+    }
+    .try-it-header::before {
+      content: '▶';
+      font-size: 9px;
+    }
+    .try-it-form {
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .try-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .try-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      width: 72px;
+      flex-shrink: 0;
+    }
+    .try-select, .try-input {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 5px 10px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .try-select:focus, .try-input:focus { border-color: var(--accent); }
+    .try-input { flex: 1; min-width: 100px; }
+
+    .run-btn {
+      align-self: flex-start;
+      padding: 8px 20px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      letter-spacing: 0.04em;
+    }
+    .run-btn:hover { background: #2563eb; }
+    .run-btn:active { transform: scale(0.97); }
+    .run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .try-response {
+      border-top: 1px solid var(--border);
+      padding: 14px 18px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      max-height: 380px;
+      overflow-y: auto;
+      display: none;
+    }
+    .try-response.visible { display: block; }
+    .resp-meta {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 10px;
+      font-size: 11px;
+    }
+    .resp-status-ok  { color: var(--green); }
+    .resp-status-err { color: var(--red); }
+    .resp-time { color: var(--muted); }
+
+    /* ── Schema table ── */
+    .schema-grid {
+      display: grid;
+      gap: 6px;
+    }
+    .schema-row {
+      display: grid;
+      grid-template-columns: 160px 100px 1fr;
+      gap: 12px;
+      padding: 9px 12px;
+      border-radius: 6px;
+      background: var(--surface);
+      font-size: 13px;
+      border: 1px solid var(--border);
+    }
+    .schema-field { font-family: 'JetBrains Mono', monospace; color: var(--accent2); font-size: 12px; }
+    .schema-type  { font-family: 'JetBrains Mono', monospace; color: var(--purple); font-size: 11px; align-self: center; }
+    .schema-note  { color: var(--muted); font-size: 12px; align-self: center; }
+
+    /* ── Domain pills ── */
+    .domain-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .domain-pill {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid;
+      font-weight: 500;
+    }
+
+    /* ── Rate limit table ── */
+    .limit-card {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 20px 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px;
+    }
+    .limit-stat { text-align: center; }
+    .limit-val {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .limit-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Source badges ── */
+    .source-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .source-card {
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .source-icon { font-size: 22px; flex-shrink: 0; }
+    .source-name { font-weight: 700; color: #e2e8f0; font-size: 13px; margin-bottom: 2px; }
+    .source-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px 0;
+      margin-top: 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* ── Mobile ── */
+    @media (max-width: 768px) {
+      .shell { grid-template-columns: 1fr; }
+      nav { display: none; }
+      main { padding: 32px 20px; }
+      h1 { font-size: 36px; }
+      .limit-card { grid-template-columns: 1fr; gap: 16px; }
+      .source-grid { grid-template-columns: 1fr; }
+      .schema-row { grid-template-columns: 120px 80px 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── Sidebar nav ── -->
+  <nav>
+    <div class="nav-logo">
+      <a href="https://vgilmap.vercel.app">
+        <span class="globe">🌍</span>
+        <span class="wordmark">VigilMap</span>
+        <span class="badge">API v1</span>
+      </a>
+    </div>
+
+    <div class="nav-section">Overview</div>
+    <a href="#intro" class="active">Introduction</a>
+    <a href="#limits">Rate limits</a>
+    <a href="#sources">Data sources</a>
+
+    <div class="nav-section">Endpoints</div>
+    <a href="#events">GET /api/v1/events</a>
+    <a href="#summary">GET /api/v1/summary</a>
+
+    <div class="nav-section">Reference</div>
+    <a href="#schema">Event schema</a>
+    <a href="#domains">Domains & severity</a>
+    <a href="#examples">Code examples</a>
+
+    <div class="nav-status">
+      <div class="status-dot">API operational</div>
+    </div>
+  </nav>
+
+  <!-- ── Main ── -->
+  <main>
+
+    <!-- INTRO -->
+    <section id="intro">
+      <div class="hero-label">REST API · v1.0</div>
+      <h1>Global Intelligence<br /><span>API</span></h1>
+      <p class="hero-sub">
+        Free, no-auth REST API aggregating real-time events from USGS, NASA FIRMS,
+        NOAA, GDELT, and WHO into a unified schema. No API key required.
+      </p>
+
+      <div class="hero-chips">
+        <span class="chip chip-green">● No auth required</span>
+        <span class="chip chip-blue">CORS enabled</span>
+        <span class="chip chip-cyan">Edge CDN cached</span>
+        <span class="chip chip-orange">JSON · REST</span>
+      </div>
+
+      <div class="hero-curl">
+        <div class="curl-bar">
+          <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          <span style="margin-left:8px;">Quick start</span>
+        </div>
+        <div class="curl-code">
+          <span class="c-dim"># Fetch the latest high-severity events</span><br/>
+          <span class="c-cmd">curl</span> <span class="c-url">"https://vgilmap.vercel.app/api/v1/events?severity=high&amp;limit=5"</span><br/><br/>
+          <span class="c-dim"># Response</span><br/>
+          <span class="c-dim">{</span><br/>
+          &nbsp;&nbsp;<span class="c-key">"ok"</span><span class="c-dim">:</span> <span class="c-bool">true</span><span class="c-dim">,</span><br/>
+          &nbsp;&nbsp;<span class="c-key">"count"</span><span class="c-dim">:</span> <span class="c-num">5</span><span class="c-dim">,</span><br/>
+          &nbsp;&nbsp;<span class="c-key">"total"</span><span class="c-dim">:</span> <span class="c-num">312</span><span class="c-dim">,</span><br/>
+          &nbsp;&nbsp;<span class="c-key">"data"</span><span class="c-dim">: [</span> <span class="c-dim">... </span><span class="c-dim">]</span><br/>
+          <span class="c-dim">}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RATE LIMITS -->
+    <section id="limits">
+      <h2>Rate limits</h2>
+      <p>The API is free and requires no authentication. Results are CDN-cached at the edge — most requests are served in &lt;50ms worldwide.</p>
+
+      <div class="limit-card">
+        <div class="limit-stat">
+          <div class="limit-val">100</div>
+          <div class="limit-label">max events per request</div>
+        </div>
+        <div class="limit-stat">
+          <div class="limit-val">5m</div>
+          <div class="limit-label">CDN cache TTL</div>
+        </div>
+        <div class="limit-stat">
+          <div class="limit-val">∞</div>
+          <div class="limit-label">requests / no key needed</div>
+        </div>
+      </div>
+
+      <h3>Headers</h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+        <pre><span class="c-key">Access-Control-Allow-Origin</span><span class="c-dim">: *</span>
+<span class="c-key">Cache-Control</span><span class="c-dim">: public, s-maxage=300, stale-while-revalidate=60</span>
+<span class="c-key">Content-Type</span><span class="c-dim">: application/json</span>
+<span class="c-key">X-VigilMap-Version</span><span class="c-dim">: 1.0.0</span>
+<span class="c-key">X-VigilMap-Count</span><span class="c-dim">: {n}</span></pre>
+      </div>
+    </section>
+
+    <!-- DATA SOURCES -->
+    <section id="sources">
+      <h2>Data sources</h2>
+      <p>All data is sourced from public APIs and refreshed automatically. VigilMap normalises each source into the unified <strong>VigilEvent</strong> schema.</p>
+      <div class="source-grid">
+        <div class="source-card">
+          <div class="source-icon">🌋</div>
+          <div>
+            <div class="source-name">USGS Earthquake Hazards</div>
+            <div class="source-desc">All earthquakes (24h) + significant events (7 days). Updates every 5 minutes.</div>
+          </div>
+        </div>
+        <div class="source-card">
+          <div class="source-icon">🔥</div>
+          <div>
+            <div class="source-name">NASA FIRMS</div>
+            <div class="source-desc">VIIRS satellite active wildfire detections. Near-real-time, 375m resolution.</div>
+          </div>
+        </div>
+        <div class="source-card">
+          <div class="source-icon">🌩</div>
+          <div>
+            <div class="source-name">NOAA NWS</div>
+            <div class="source-desc">US National Weather Service active alerts — tornado, hurricane, severe thunderstorm warnings.</div>
+          </div>
+        </div>
+        <div class="source-card">
+          <div class="source-icon">⚔️</div>
+          <div>
+            <div class="source-name">GDELT + News RSS</div>
+            <div class="source-desc">GDELT Doc API conflict events + BBC/DW/Guardian RSS feeds, merged and deduplicated.</div>
+          </div>
+        </div>
+        <div class="source-card">
+          <div class="source-icon">🏥</div>
+          <div>
+            <div class="source-name">WHO Disease Outbreak News</div>
+            <div class="source-desc">WHO official disease outbreak alerts, filtered for epidemiological relevance.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EVENTS ENDPOINT -->
+    <section id="events">
+      <h2>Endpoints</h2>
+
+      <div class="endpoint">
+        <div class="endpoint-header">
+          <span class="method">GET</span>
+          <span class="endpoint-path">/api/v1/events</span>
+          <span class="endpoint-desc">List current global events</span>
+        </div>
+        <div class="endpoint-body">
+          <p>Returns normalized VigilEvents from all active data sources. Cached for 5 minutes at the CDN edge.</p>
+
+          <h3>Query parameters</h3>
+          <table class="param-table">
+            <thead>
+              <tr>
+                <th>Parameter</th>
+                <th>Type</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="param-name">domain</span></td>
+                <td><span class="param-type">string</span></td>
+                <td class="param-desc">Comma-separated domains: <code>disaster</code>, <code>climate</code>, <code>health</code>, <code>conflict</code>, <code>economic</code>, <code>labor</code>, <code>science</code></td>
+              </tr>
+              <tr>
+                <td><span class="param-name">severity</span></td>
+                <td><span class="param-type">string</span></td>
+                <td class="param-desc">Minimum severity: <code>info</code> <code>low</code> <code>medium</code> <code>high</code> <code>critical</code></td>
+              </tr>
+              <tr>
+                <td><span class="param-name">limit</span></td>
+                <td><span class="param-type">integer</span></td>
+                <td class="param-desc">Max results to return. Default + max: <code>100</code></td>
+              </tr>
+              <tr>
+                <td><span class="param-name">since</span></td>
+                <td><span class="param-type">datetime</span></td>
+                <td class="param-desc">ISO 8601 timestamp — only events after this time. Example: <code>2026-03-01T00:00:00Z</code></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Example requests</h3>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+            <pre><span class="c-dim"># All events</span>
+<span class="c-cmd">curl</span> <span class="c-url">https://vgilmap.vercel.app/api/v1/events</span>
+
+<span class="c-dim"># High-severity conflict + health events</span>
+<span class="c-cmd">curl</span> <span class="c-url">"https://vgilmap.vercel.app/api/v1/events?domain=conflict,health&severity=high&limit=20"</span>
+
+<span class="c-dim"># Events in the last hour</span>
+<span class="c-cmd">curl</span> <span class="c-url">"https://vgilmap.vercel.app/api/v1/events?since=$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)"</span></pre>
+          </div>
+
+          <!-- TRY IT -->
+          <div class="try-it">
+            <div class="try-it-header">Try it live</div>
+            <div class="try-it-form">
+              <div class="try-row">
+                <span class="try-label">domain</span>
+                <select class="try-select" id="try-domain">
+                  <option value="">all</option>
+                  <option value="disaster">disaster</option>
+                  <option value="climate">climate</option>
+                  <option value="health">health</option>
+                  <option value="conflict">conflict</option>
+                </select>
+              </div>
+              <div class="try-row">
+                <span class="try-label">severity</span>
+                <select class="try-select" id="try-severity">
+                  <option value="">any</option>
+                  <option value="medium">medium+</option>
+                  <option value="high">high+</option>
+                  <option value="critical">critical only</option>
+                </select>
+              </div>
+              <div class="try-row">
+                <span class="try-label">limit</span>
+                <input class="try-input" id="try-limit" type="number" value="5" min="1" max="100" style="width:80px;flex:none;" />
+              </div>
+              <button class="run-btn" onclick="runEventsRequest()">Run request</button>
+            </div>
+            <div class="try-response" id="try-response-events">
+              <div class="resp-meta">
+                <span id="resp-events-status"></span>
+                <span id="resp-events-time" class="resp-time"></span>
+              </div>
+              <pre id="resp-events-body"></pre>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- SUMMARY ENDPOINT -->
+      <div class="endpoint" id="summary">
+        <div class="endpoint-header">
+          <span class="method">GET</span>
+          <span class="endpoint-path">/api/v1/summary</span>
+          <span class="endpoint-desc">Event counts by domain & severity</span>
+        </div>
+        <div class="endpoint-body">
+          <p>Returns aggregate counts grouped by domain and severity, plus the top 5 critical/high events. Ideal for status widgets and dashboards.</p>
+
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+            <pre><span class="c-cmd">curl</span> <span class="c-url">https://vgilmap.vercel.app/api/v1/summary</span></pre>
+          </div>
+
+          <h3>Response</h3>
+          <div class="code-block">
+            <button class="copy-btn" onclick="copyCode(this)">copy</button>
+            <pre><span class="c-dim">{</span>
+  <span class="c-key">"ok"</span><span class="c-dim">:</span> <span class="c-bool">true</span><span class="c-dim">,</span>
+  <span class="c-key">"generated"</span><span class="c-dim">:</span> <span class="c-str">"2026-03-01T12:00:00.000Z"</span><span class="c-dim">,</span>
+  <span class="c-key">"total_events"</span><span class="c-dim">:</span> <span class="c-num">312</span><span class="c-dim">,</span>
+  <span class="c-key">"by_domain"</span><span class="c-dim">: {</span>
+    <span class="c-key">"disaster"</span><span class="c-dim">:</span> <span class="c-num">198</span><span class="c-dim">,</span>
+    <span class="c-key">"climate"</span><span class="c-dim">:</span> <span class="c-num">67</span><span class="c-dim">,</span>
+    <span class="c-key">"conflict"</span><span class="c-dim">:</span> <span class="c-num">31</span><span class="c-dim">,</span>
+    <span class="c-key">"health"</span><span class="c-dim">:</span> <span class="c-num">16</span>
+  <span class="c-dim">},</span>
+  <span class="c-key">"by_severity"</span><span class="c-dim">: {</span>
+    <span class="c-key">"critical"</span><span class="c-dim">:</span> <span class="c-num">4</span><span class="c-dim">,</span>
+    <span class="c-key">"high"</span><span class="c-dim">:</span> <span class="c-num">42</span><span class="c-dim">,</span>
+    <span class="c-key">"medium"</span><span class="c-dim">:</span> <span class="c-num">98</span><span class="c-dim">,</span>
+    <span class="c-key">"low"</span><span class="c-dim">:</span> <span class="c-num">168</span>
+  <span class="c-dim">},</span>
+  <span class="c-key">"top_events"</span><span class="c-dim">: [ ... ]</span>
+<span class="c-dim">}</span></pre>
+          </div>
+
+          <div class="try-it">
+            <div class="try-it-header">Try it live</div>
+            <div class="try-it-form">
+              <button class="run-btn" onclick="runSummaryRequest()">Run request</button>
+            </div>
+            <div class="try-response" id="try-response-summary">
+              <div class="resp-meta">
+                <span id="resp-summary-status"></span>
+                <span id="resp-summary-time" class="resp-time"></span>
+              </div>
+              <pre id="resp-summary-body"></pre>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- SCHEMA -->
+    <section id="schema">
+      <h2>Event schema</h2>
+      <p>Every event from every source is normalized into the <strong>VigilEvent</strong> interface.</p>
+
+      <div class="schema-grid">
+        <div class="schema-row">
+          <span class="schema-field">id</span>
+          <span class="schema-type">string</span>
+          <span class="schema-note">Unique event ID, e.g. <code>usgs-nc75209241</code></span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">timestamp</span>
+          <span class="schema-type">ISO 8601</span>
+          <span class="schema-note">Event occurrence time in UTC</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">domain</span>
+          <span class="schema-type">string</span>
+          <span class="schema-note">One of: disaster, climate, health, conflict, economic, labor, science</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">category</span>
+          <span class="schema-type">string</span>
+          <span class="schema-note">Specific type, e.g. <code>earthquake</code>, <code>wildfire</code>, <code>outbreak</code></span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">severity</span>
+          <span class="schema-type">string</span>
+          <span class="schema-note">info · low · medium · high · critical</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">title</span>
+          <span class="schema-type">string</span>
+          <span class="schema-note">Human-readable event title</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">description</span>
+          <span class="schema-type">string</span>
+          <span class="schema-note">Short description (max 300 chars)</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">location.lat</span>
+          <span class="schema-type">number</span>
+          <span class="schema-note">Latitude (WGS84)</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">location.lng</span>
+          <span class="schema-type">number</span>
+          <span class="schema-note">Longitude (WGS84)</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">location.label</span>
+          <span class="schema-type">string</span>
+          <span class="schema-note">Human-readable place name</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">source</span>
+          <span class="schema-type">string</span>
+          <span class="schema-note">Data origin, e.g. <code>USGS</code>, <code>WHO</code></span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">sourceUrl</span>
+          <span class="schema-type">string</span>
+          <span class="schema-note">URL to original event record</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">confidence</span>
+          <span class="schema-type">number</span>
+          <span class="schema-note">0–1 confidence score (1.0 = authoritative sensor data)</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">tags</span>
+          <span class="schema-type">string[]</span>
+          <span class="schema-note">Searchable keyword tags</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field">metadata</span>
+          <span class="schema-type">object</span>
+          <span class="schema-note">Source-specific extras, e.g. <code>magnitude</code>, <code>frp</code>, <code>depth_km</code></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- DOMAINS -->
+    <section id="domains">
+      <h2>Domains & severity</h2>
+
+      <h3>Domains</h3>
+      <div class="domain-grid">
+        <span class="domain-pill" style="color:#ef4444;border-color:#ef4444;background:rgba(239,68,68,0.07)">🌋 disaster</span>
+        <span class="domain-pill" style="color:#f97316;border-color:#f97316;background:rgba(249,115,22,0.07)">🌡️ climate</span>
+        <span class="domain-pill" style="color:#ec4899;border-color:#ec4899;background:rgba(236,72,153,0.07)">🏥 health</span>
+        <span class="domain-pill" style="color:#a78bfa;border-color:#a78bfa;background:rgba(167,139,250,0.07)">⚔️ conflict</span>
+        <span class="domain-pill" style="color:#eab308;border-color:#eab308;background:rgba(234,179,8,0.07)">💰 economic</span>
+        <span class="domain-pill" style="color:#3b82f6;border-color:#3b82f6;background:rgba(59,130,246,0.07)">✊ labor</span>
+        <span class="domain-pill" style="color:#10b981;border-color:#10b981;background:rgba(16,185,129,0.07)">🔬 science</span>
+      </div>
+
+      <h3>Severity levels</h3>
+      <div class="schema-grid">
+        <div class="schema-row">
+          <span class="schema-field" style="color:#a78bfa">critical</span>
+          <span class="schema-type">level 4</span>
+          <span class="schema-note">Imminent threat to life or critical infrastructure</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field" style="color:#ef4444">high</span>
+          <span class="schema-type">level 3</span>
+          <span class="schema-note">Major event requiring immediate attention, M5+ earthquakes, large wildfires</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field" style="color:#f97316">medium</span>
+          <span class="schema-type">level 2</span>
+          <span class="schema-note">Significant event, M3–5 earthquakes, active conflicts, severe weather</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field" style="color:#facc15">low</span>
+          <span class="schema-type">level 1</span>
+          <span class="schema-note">Minor event, small earthquakes, routine weather alerts</span>
+        </div>
+        <div class="schema-row">
+          <span class="schema-field" style="color:#6b7280">info</span>
+          <span class="schema-type">level 0</span>
+          <span class="schema-note">Informational — monitoring advisories, research alerts</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- EXAMPLES -->
+    <section id="examples">
+      <h2>Code examples</h2>
+
+      <h3>JavaScript / fetch</h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+        <pre><span class="c-dim">// Get all critical events</span>
+<span class="c-key">const</span> res = <span class="c-key">await</span> fetch(
+  <span class="c-str">'https://vgilmap.vercel.app/api/v1/events?severity=critical'</span>
+);
+<span class="c-key">const</span> { data } = <span class="c-key">await</span> res.json();
+console.log(<span class="c-str">`</span><span class="c-num">${data.length}</span><span class="c-str"> critical events`</span>);
+
+<span class="c-dim">// Watch for new events every 5 minutes</span>
+<span class="c-key">setInterval</span>(<span class="c-key">async</span> () => {
+  <span class="c-key">const</span> since = <span class="c-key">new</span> Date(Date.now() - <span class="c-num">5 * 60000</span>).toISOString();
+  <span class="c-key">const</span> r = <span class="c-key">await</span> fetch(
+    <span class="c-str">`https://vgilmap.vercel.app/api/v1/events?since=</span><span class="c-num">${since}</span><span class="c-str">`</span>
+  );
+  <span class="c-key">const</span> { data } = <span class="c-key">await</span> r.json();
+  <span class="c-dim">// handle new events…</span>
+}, <span class="c-num">5 * 60000</span>);</pre>
+      </div>
+
+      <h3>Python</h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+        <pre><span class="c-key">import</span> requests
+
+<span class="c-dim"># Fetch high-severity conflict events</span>
+resp = requests.get(
+    <span class="c-str">"https://vgilmap.vercel.app/api/v1/events"</span>,
+    params={<span class="c-str">"domain"</span>: <span class="c-str">"conflict"</span>, <span class="c-str">"severity"</span>: <span class="c-str">"high"</span>, <span class="c-str">"limit"</span>: <span class="c-num">20</span>}
+)
+events = resp.json()[<span class="c-str">"data"</span>]
+
+<span class="c-key">for</span> ev <span class="c-key">in</span> events:
+    print(<span class="c-str">f"[{ev['severity'].upper()}] {ev['title']} — {ev['location']['label']}"</span>)</pre>
+      </div>
+
+      <h3>cURL</h3>
+      <div class="code-block">
+        <button class="copy-btn" onclick="copyCode(this)">copy</button>
+        <pre><span class="c-dim"># Earthquake M4+ in the last 6 hours, formatted with jq</span>
+<span class="c-cmd">curl</span> -s <span class="c-url">"https://vgilmap.vercel.app/api/v1/events?domain=disaster&severity=medium"</span> \
+  | jq <span class="c-str">'.data[] | {title, magnitude: .metadata.magnitude, location: .location.label}'</span>
+
+<span class="c-dim"># Dashboard summary widget</span>
+<span class="c-cmd">curl</span> -s <span class="c-url">https://vgilmap.vercel.app/api/v1/summary</span> \
+  | jq <span class="c-str">'{total: .total_events, by_domain}'</span></pre>
+      </div>
+
+      <footer>
+        <span>VigilMap API v1.0 · MIT License · <a href="https://vgilmap.vercel.app">vgilmap.vercel.app</a></span>
+        <span><a href="/openapi.json">openapi.json</a> · <a href="https://github.com/littleworks-inc/vgilmap">GitHub</a></span>
+      </footer>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // ── Copy buttons ──────────────────────────────────────────
+  function copyCode(btn) {
+    const pre = btn.nextElementSibling;
+    const text = pre.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'copy';
+        btn.classList.remove('copied');
+      }, 1800);
+    });
+  }
+
+  // ── Active nav link on scroll ─────────────────────────────
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('nav a');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navLinks.forEach(a => a.classList.remove('active'));
+        const active = document.querySelector(`nav a[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { threshold: 0.3 });
+  sections.forEach(s => observer.observe(s));
+
+  // ── Try it: /api/v1/events ────────────────────────────────
+  async function runEventsRequest() {
+    const domain   = document.getElementById('try-domain').value;
+    const severity = document.getElementById('try-severity').value;
+    const limit    = document.getElementById('try-limit').value || '5';
+
+    const params = new URLSearchParams();
+    if (domain)   params.set('domain', domain);
+    if (severity) params.set('severity', severity);
+    params.set('limit', limit);
+
+    const url = `https://vgilmap.vercel.app/api/v1/events?${params}`;
+    await runRequest(url, 'events');
+  }
+
+  // ── Try it: /api/v1/summary ───────────────────────────────
+  async function runSummaryRequest() {
+    await runRequest('https://vgilmap.vercel.app/api/v1/summary', 'summary');
+  }
+
+  async function runRequest(url, id) {
+    const respDiv   = document.getElementById(`try-response-${id}`);
+    const statusEl  = document.getElementById(`resp-${id}-status`);
+    const timeEl    = document.getElementById(`resp-${id}-time`);
+    const bodyEl    = document.getElementById(`resp-${id}-body`);
+
+    respDiv.classList.add('visible');
+    bodyEl.textContent = 'Loading…';
+    statusEl.textContent = '';
+    timeEl.textContent = '';
+
+    const t0 = Date.now();
+    try {
+      const res  = await fetch(url);
+      const ms   = Date.now() - t0;
+      const json = await res.json();
+
+      // Truncate large arrays for display
+      if (json.data && json.data.length > 3) {
+        const shown = json.data.slice(0, 3);
+        json.data = shown;
+        json._note = `Showing 3 of ${json.count} events`;
+      }
+
+      statusEl.textContent = `${res.status} OK`;
+      statusEl.className = 'resp-status-ok';
+      timeEl.textContent = `${ms}ms`;
+      bodyEl.textContent = JSON.stringify(json, null, 2);
+    } catch (err) {
+      const ms = Date.now() - t0;
+      statusEl.textContent = 'Error';
+      statusEl.className = 'resp-status-err';
+      timeEl.textContent = `${ms}ms`;
+      bodyEl.textContent = String(err);
+    }
+  }
+</script>
+</body>
+</html>
