@@ -5,7 +5,7 @@
  * Clicking a row calls onSelectEvent so the globe can fly to it.
  */
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { VigilEvent, Domain } from '../types';
 import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
 import { IntelBrief } from './IntelBrief';
@@ -156,9 +156,38 @@ export function Sidebar({
   anomalySignals,
   onSelectSignal,
 }: SidebarProps) {
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll]   = useState(false);
+  const [query, setQuery]       = useState('');
   const INITIAL_COUNT = 50;
-  const recent = showAll ? events : events.slice(0, INITIAL_COUNT);
+  // Normalize search query
+  const trimmed = query.trim().toLowerCase();
+  // Filter events by keyword when searching
+  const matchedEvents = trimmed
+    ? events.filter(ev => {
+        const haystack = [
+          ev.title,
+          ev.location.label,
+          ev.location.country,
+          ev.location.region,
+          ev.category,
+          ev.source,
+          ...(ev.tags ?? []),
+        ].join(' ').toLowerCase();
+        return haystack.includes(trimmed);
+      })
+    : events;
+  // When searching show all matches; otherwise respect showAll/INITIAL_COUNT
+  const recent = trimmed
+    ? matchedEvents.slice(0, 200)
+    : (showAll ? events : events.slice(0, INITIAL_COUNT));
+  // Reset showAll when query changes
+  const prevQuery = useRef('');
+  useEffect(() => {
+    if (prevQuery.current !== trimmed) {
+      setShowAll(false);
+      prevQuery.current = trimmed;
+    }
+  }, [trimmed]);
 
   return (
     <aside
@@ -300,18 +329,93 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* ── Section header ──────────────────────────────────── */}
-      <div
-        style={{
+      {/* ── Section header + search ─────────────────────────── */}
+      <div style={{ borderBottom: '1px solid #1e293b' }}>
+        {/* Header row */}
+        <div style={{
           padding: '10px 16px 6px',
-          fontSize: '11px',
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.1em',
-          color: '#475569',
-        }}
-      >
-        Recent Events (24h)
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <span style={{
+            fontSize: '11px',
+            fontWeight: 600,
+            textTransform: 'uppercase' as const,
+            letterSpacing: '0.1em',
+            color: '#475569',
+          }}>
+            {trimmed
+              ? `${matchedEvents.length} result${matchedEvents.length !== 1 ? 's' : ''}`
+              : 'Recent Events (24h)'}
+          </span>
+          {trimmed && (
+            <button
+              onClick={() => setQuery('')}
+              style={{
+                background: 'none', border: 'none',
+                color: '#475569', cursor: 'pointer',
+                fontSize: '11px', padding: '0',
+              }}
+            >
+              Clear ×
+            </button>
+          )}
+        </div>
+        {/* Search input */}
+        <div style={{ padding: '0 12px 8px', position: 'relative' }}>
+          <span style={{
+            position: 'absolute',
+            left: '22px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: '13px',
+            color: '#334155',
+            pointerEvents: 'none',
+            lineHeight: 1,
+          }}>🔍</span>
+          <input
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search events, locations…"
+            style={{
+              width: '100%',
+              boxSizing: 'border-box' as const,
+              background: '#0a0f1e',
+              border: '1px solid #1e293b',
+              borderRadius: '6px',
+              color: '#e2e8f0',
+              fontSize: '12px',
+              padding: '6px 28px 6px 30px',
+              outline: 'none',
+              fontFamily: 'inherit',
+              transition: 'border-color 0.15s',
+            }}
+            onFocus={e => (e.target.style.borderColor = '#3b82f6')}
+            onBlur={e => (e.target.style.borderColor = '#1e293b')}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              style={{
+                position: 'absolute',
+                right: '20px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                color: '#475569',
+                cursor: 'pointer',
+                fontSize: '14px',
+                lineHeight: 1,
+                padding: '0',
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Event list ─────────────────────────────────────── */}
@@ -326,6 +430,34 @@ export function Sidebar({
             }}
           >
             Loading events…
+          </div>
+        )}
+
+        {!loading && trimmed && matchedEvents.length === 0 && (
+          <div style={{
+            padding: '24px 16px',
+            textAlign: 'center',
+            color: '#475569',
+            fontSize: '13px',
+          }}>
+            <div style={{ fontSize: '24px', marginBottom: '8px' }}>🔍</div>
+            No events match <strong style={{ color: '#94a3b8' }}>"{query}"</strong>
+            <br />
+            <button
+              onClick={() => setQuery('')}
+              style={{
+                marginTop: '10px',
+                padding: '4px 12px',
+                background: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: '4px',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                fontSize: '12px',
+              }}
+            >
+              Clear search
+            </button>
           </div>
         )}
 
@@ -428,7 +560,7 @@ export function Sidebar({
       </div>
 
       {/* ── Load more / footer ──────────────────────────── */}
-      {events.length > INITIAL_COUNT && (
+      {!trimmed && events.length > INITIAL_COUNT && (
         <button
           onClick={() => setShowAll(v => !v)}
           style={{
