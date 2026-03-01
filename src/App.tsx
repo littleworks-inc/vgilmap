@@ -99,20 +99,6 @@ function countByDomain(events: VigilEvent[]): Partial<Record<Domain, number>> {
   return counts;
 }
 
-function domainLabel(domain: Domain, count: number): string {
-  const labels: Record<Domain, [string, string]> = {
-    disaster: ['earthquake', 'earthquakes'],
-    climate:  ['event', 'events'],
-    health:   ['alert', 'alerts'],
-    conflict: ['incident', 'incidents'],
-    economic: ['indicator', 'indicators'],
-    labor:    ['event', 'events'],
-    science:  ['paper', 'papers'],
-  };
-  const [singular, plural] = labels[domain];
-  return count === 1 ? singular : plural;
-}
-
 // ─── Map legend + live count pill ──────────────────────────
 
 function DomainCountPill({
