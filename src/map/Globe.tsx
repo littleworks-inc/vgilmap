@@ -402,35 +402,42 @@ export function Globe({ events, onEventClick }: GlobeProps) {
         },
       });
 
-      // Pointer cursor on hover
+      // ── Hover: show popup + highlight on mousemove ───────
       map.on('mouseenter', LAYER_ID, () => {
         map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mousemove', LAYER_ID, e => {
+        if (!e.features || !e.features[0]) return;
+        const props = e.features[0].properties as PopupProps;
+        // Highlight ring
+        map.setFilter(`${LAYER_ID}-hover`, ['==', 'id', props.id ?? '']);
+        // Show or update hover popup (no close button, no click needed)
+        if (!popupRef.current) {
+          popupRef.current = new maplibregl.Popup({
+            maxWidth: '300px',
+            offset: 14,
+            closeButton: false,
+            closeOnClick: false,
+            className: 'vigil-hover-popup',
+          }).addTo(map);
+        }
+        popupRef.current
+          .setLngLat(e.lngLat)
+          .setHTML(renderPopup(props));
       });
       map.on('mouseleave', LAYER_ID, () => {
         map.getCanvas().style.cursor = '';
         map.setFilter(`${LAYER_ID}-hover`, ['==', 'id', '']);
-      });
-
-      // Highlight on hover
-      map.on('mousemove', LAYER_ID, e => {
-        if (e.features && e.features[0]) {
-          const id = e.features[0].properties?.id ?? '';
-          map.setFilter(`${LAYER_ID}-hover`, ['==', 'id', id]);
+        if (popupRef.current) {
+          popupRef.current.remove();
+          popupRef.current = null;
         }
       });
-
-      // ── Click handler ────────────────────────────────────
+      // ── Click: select event in sidebar + fly to it ───────
       map.on('click', LAYER_ID, e => {
         if (!e.features || !e.features[0]) return;
         const props = e.features[0].properties as PopupProps;
         const ev = eventsRef.current.find(v => v.id === props.id);
-
-        if (popupRef.current) popupRef.current.remove();
-        popupRef.current = new maplibregl.Popup({ maxWidth: '300px', offset: 12 })
-          .setLngLat(e.lngLat)
-          .setHTML(renderPopup(props))
-          .addTo(map);
-
         if (ev && onEventClick) onEventClick(ev);
       });
 
