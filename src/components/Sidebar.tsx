@@ -5,6 +5,7 @@
  * Clicking a row calls onSelectEvent so the globe can fly to it.
  */
 
+import { useState } from 'react';
 import type { VigilEvent, Domain } from '../types';
 import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
 import { IntelBrief } from './IntelBrief';
@@ -119,7 +120,9 @@ export function Sidebar({
   anomalySignals,
   onSelectSignal,
 }: SidebarProps) {
-  const recent = events.slice(0, 10);
+  const [showAll, setShowAll] = useState(false);
+  const INITIAL_COUNT = 50;
+  const recent = showAll ? events : events.slice(0, INITIAL_COUNT);
 
   return (
     <aside
@@ -386,7 +389,29 @@ export function Sidebar({
         })}
       </div>
 
-      {/* ── Footer ──────────────────────────────────────────── */}
+      {/* ── Load more / footer ──────────────────────────── */}
+      {events.length > INITIAL_COUNT && (
+        <button
+          onClick={() => setShowAll(v => !v)}
+          style={{
+            width: '100%',
+            padding: '10px',
+            background: 'none',
+            border: 'none',
+            borderTop: '1px solid #1e293b',
+            color: '#475569',
+            fontSize: '12px',
+            cursor: 'pointer',
+            transition: 'color 0.15s',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.color = '#94a3b8')}
+          onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+        >
+          {showAll
+            ? `▲ Show less`
+            : `▼ Show all ${events.length} events`}
+        </button>
+      )}
       <div
         style={{
           padding: '10px 16px',
@@ -396,7 +421,7 @@ export function Sidebar({
           textAlign: 'center',
         }}
       >
-        Data: USGS · NASA FIRMS · NOAA NWS · ReliefWeb/OCHA · MIT License
+        USGS · NASA FIRMS · NOAA · GDELT · WHO · MIT License
       </div>
     </aside>
   );

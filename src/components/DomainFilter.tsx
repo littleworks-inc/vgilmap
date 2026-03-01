@@ -49,8 +49,9 @@ export function DomainFilter({
   onSelectAll,
   onClearAll,
 }: DomainFilterProps) {
-  const allActive = VISIBLE_DOMAINS.every(d => activeDomains.has(d));
-  const noneActive = VISIBLE_DOMAINS.every(d => !activeDomains.has(d));
+  const domainsWithData = VISIBLE_DOMAINS.filter(d => (counts[d] ?? 0) > 0);
+  const allActive = domainsWithData.every(d => activeDomains.has(d));
+  const noneActive = domainsWithData.every(d => !activeDomains.has(d));
 
   return (
     <div
@@ -89,7 +90,7 @@ export function DomainFilter({
       <div style={{ width: '1px', height: '20px', background: '#1e293b', margin: '0 2px' }} />
 
       {/* One pill per domain */}
-      {VISIBLE_DOMAINS.map(domain => {
+      {VISIBLE_DOMAINS.filter(domain => (counts[domain] ?? 0) > 0).map(domain => {
         const active = activeDomains.has(domain);
         const count = counts[domain] ?? 0;
         const color = DOMAIN_COLORS[domain];
