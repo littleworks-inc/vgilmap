@@ -302,11 +302,12 @@ export function Globe({ events, onEventClick }: GlobeProps) {
     ['mousedown', 'wheel', 'touchstart', 'keydown'].forEach(evt => {
       map.getContainer().addEventListener(evt, resetIdle, { passive: true });
     });
-    // Store cleanup on the map for later
+    // Store cleanup + resetIdle on the map for later
     (map as any)._vigilCleanup = () => {
       stopPan();
       if (idleTimer) clearTimeout(idleTimer);
     };
+    (map as any)._vigilResetIdle = resetIdle;
 
     // ── Add source + layer when style loads ───────────────
     map.on('load', () => {
@@ -480,14 +481,22 @@ export function Globe({ events, onEventClick }: GlobeProps) {
 
   // ── Fly to a specific event ──────────────────────────────
   const flyTo = useCallback((lat: number, lng: number, zoom = 5) => {
-    mapRef.current?.flyTo({ center: [lng, lat], zoom, duration: 1000 });
+    const map = mapRef.current;
+    if (!map) return;
+    // Stop any active rotation and restart the idle timer
+    (map as any)._vigilResetIdle?.();
+    map.flyTo({ center: [lng, lat], zoom, duration: 1200, essential: true });
   }, []);
 
-  // Expose flyTo on the DOM node for parent components
+  // Expose flyTo + resetIdle on the DOM node for parent components
   useEffect(() => {
     if (containerRef.current) {
       // @ts-ignore
       containerRef.current.__flyTo = flyTo;
+      // @ts-ignore
+      containerRef.current.__resetIdle = () => {
+        (mapRef.current as any)?._vigilResetIdle?.();
+      };
     }
   }, [flyTo]);
 
