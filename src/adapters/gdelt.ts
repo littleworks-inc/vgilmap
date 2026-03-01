@@ -26,12 +26,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     ),
   ]);
 }
-function severityFromText(text: string): Severity {
-  const t = text.toLowerCase();
-  if (/killed|dead|massacre|airstrike|bombing|explosion|attack/.test(t)) return 'high';
-  if (/clash|conflict|fighting|troops|offensive|shelling|protest/.test(t)) return 'medium';
-  return 'low';
-}
 // ─── Country coordinate lookup ─────────────────────────────
 const COUNTRY_COORDS: Record<string, [number, number]> = {
   'AFGHANISTAN':[33.9,67.7],'UKRAINE':[48.4,31.2],'RUSSIA':[61.5,105.3],
