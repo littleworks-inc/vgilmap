@@ -25,7 +25,7 @@ import { fetchNOAAAlerts } from './adapters/noaa';
 import { fetchGDELT } from './adapters/gdelt';
 import { fetchWHOOutbreaks } from './adapters/who';
 import type { Domain, VigilEvent } from './types';
-import { DOMAIN_ICONS } from './types';
+import { DOMAIN_ICONS, DOMAIN_COLORS } from './types';
 import { detectAnomalies } from './intelligence/anomaly';
 import type { AnomalySignal } from './intelligence/anomaly';
 
@@ -36,6 +36,16 @@ const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const ALL_DOMAINS: Domain[] = [
   'disaster', 'climate', 'health', 'conflict', 'economic', 'labor', 'science',
 ];
+
+const DOMAIN_LABELS: Record<Domain, string> = {
+  disaster: 'Earthquakes',
+  climate:  'Climate',
+  health:   'Health',
+  conflict: 'Conflict',
+  economic: 'Economic',
+  labor:    'Labor',
+  science:  'Science',
+};
 
 // ─── URL helpers ───────────────────────────────────────────
 
@@ -103,7 +113,7 @@ function domainLabel(domain: Domain, count: number): string {
   return count === 1 ? singular : plural;
 }
 
-// ─── Per-domain count pill ─────────────────────────────────
+// ─── Map legend + live count pill ──────────────────────────
 
 function DomainCountPill({
   events,
@@ -113,48 +123,123 @@ function DomainCountPill({
   lastUpdated: Date | null;
 }) {
   const counts = useMemo(() => countByDomain(events), [events]);
-
   const active = (Object.entries(counts) as [Domain, number][])
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1]);
-
   if (active.length === 0) return null;
-
   return (
     <div
       style={{
         position: 'absolute',
         bottom: '48px',
         left: '12px',
-        background: 'rgba(10,15,30,0.88)',
+        background: 'rgba(10,15,30,0.92)',
         border: '1px solid #1e293b',
         borderRadius: '10px',
-        padding: '7px 12px',
-        fontSize: '12px',
-        color: '#94a3b8',
-        backdropFilter: 'blur(6px)',
+        backdropFilter: 'blur(8px)',
         zIndex: 5,
         pointerEvents: 'none',
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '10px',
-        maxWidth: '480px',
-        lineHeight: 1.6,
+        minWidth: '160px',
+        overflow: 'hidden',
       }}
     >
-      {active.map(([domain, count]) => (
-        <span key={domain} style={{ whiteSpace: 'nowrap' }}>
-          <span>{DOMAIN_ICONS[domain]}</span>{' '}
-          <strong style={{ color: '#e2e8f0' }} className="vigil-count">
-            <AnimatedCount value={count} />
-          </strong>{' '}
-          <span style={{ color: '#64748b' }}>{domainLabel(domain, count)}</span>
-        </span>
-      ))}
+      {/* ── Legend header ── */}
+      <div style={{
+        padding: '6px 12px',
+        borderBottom: '1px solid #1e293b',
+        fontSize: '9px',
+        fontWeight: 700,
+        letterSpacing: '0.12em',
+        textTransform: 'uppercase' as const,
+        color: '#334155',
+      }}>
+        Map Legend
+      </div>
+      {/* ── Domain rows ── */}
+      <div style={{ padding: '6px 0' }}>
+        {active.map(([domain, count]) => (
+          <div key={domain} style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '3px 12px',
+          }}>
+            {/* Color swatch */}
+            <span style={{
+              width: '10px',
+              height: '10px',
+              borderRadius: '50%',
+              background: DOMAIN_COLORS[domain],
+              flexShrink: 0,
+              boxShadow: `0 0 5px ${DOMAIN_COLORS[domain]}88`,
+            }} />
+            {/* Icon + label */}
+            <span style={{ fontSize: '12px', color: '#94a3b8', flex: 1 }}>
+              {DOMAIN_ICONS[domain]} {DOMAIN_LABELS[domain]}
+            </span>
+            {/* Count */}
+            <span style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              color: '#e2e8f0',
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              <AnimatedCount value={count} />
+            </span>
+          </div>
+        ))}
+      </div>
+      {/* ── Earthquake magnitude sub-legend ── */}
+      {(counts['disaster'] ?? 0) > 0 && (
+        <div style={{
+          borderTop: '1px solid #1e293b',
+          padding: '6px 12px',
+        }}>
+          <div style={{
+            fontSize: '9px',
+            fontWeight: 700,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase' as const,
+            color: '#334155',
+            marginBottom: '4px',
+          }}>
+            Magnitude
+          </div>
+          {[
+            { color: '#ef4444', label: 'M5+  major' },
+            { color: '#f97316', label: 'M3–5 moderate' },
+            { color: '#facc15', label: 'M<3  minor' },
+          ].map(({ color, label }) => (
+            <div key={label} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '2px 0',
+            }}>
+              <span style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                background: color,
+                flexShrink: 0,
+                boxShadow: `0 0 4px ${color}88`,
+              }} />
+              <span style={{ fontSize: '11px', color: '#64748b' }}>{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* ── Last updated ── */}
       {lastUpdated && (
-        <span style={{ color: '#334155', borderLeft: '1px solid #1e293b', paddingLeft: '10px' }}>
-          {lastUpdated.toLocaleTimeString()}
-        </span>
+        <div style={{
+          borderTop: '1px solid #1e293b',
+          padding: '5px 12px',
+          fontSize: '10px',
+          color: '#334155',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          ● Updated {lastUpdated.toLocaleTimeString()}
+        </div>
       )}
     </div>
   );
