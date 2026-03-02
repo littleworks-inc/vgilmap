@@ -20,16 +20,6 @@ const QUERY_BODY = JSON.stringify({
       'source', 'url', 'body', 'theme',
     ],
   },
-  filter: {
-    operator: 'OR',
-    conditions: [
-      { field: 'theme.name', value: 'Food and Nutrition' },
-      { field: 'theme.name', value: 'Economy' },
-      { field: 'theme.name', value: 'Employment and Livelihoods' },
-      { field: 'theme.name', value: 'Refugees and Internally Displaced Persons' },
-      { field: 'theme.name', value: 'Recovery and Reconstruction' },
-    ],
-  },
   sort: ['date.created:desc'],
 });
 

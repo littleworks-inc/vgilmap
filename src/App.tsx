@@ -399,7 +399,7 @@ export default function App() {
                 <div style={{ fontSize: '36px', marginBottom: '10px' }}>🌍</div>
                 <div>Loading global intelligence data…</div>
                 <div style={{ fontSize: '11px', color: '#475569', marginTop: '6px' }}>
-                  USGS · NASA FIRMS · NOAA · GDELT · WHO
+                  USGS · NASA FIRMS · NOAA · GDELT · WHO · ReliefWeb
                 </div>
               </div>
             </div>

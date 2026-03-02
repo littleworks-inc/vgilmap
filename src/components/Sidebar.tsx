@@ -238,51 +238,6 @@ export function Sidebar({
       {/* ── Anomaly Signals ──────────────────────────────────── */}
       <AnomalyPanel signals={anomalySignals} onSelectSignal={onSelectSignal} />
 
-      {/* ── Domain legend ────────────────────────────────────── */}
-      {(() => {
-        // Only show domains that have at least one event
-        const activeDomains = (Object.keys(DOMAIN_COLORS) as Domain[]).filter(
-          d => events.some(e => e.domain === d)
-        );
-        if (activeDomains.length === 0) return null;
-        return (
-          <div
-            style={{
-              padding: '8px 16px',
-              borderBottom: '1px solid #1e293b',
-              display: 'flex',
-              gap: '10px',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-            }}
-          >
-            {activeDomains.map(domain => (
-              <span
-                key={domain}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '11px',
-                  color: '#94a3b8',
-                }}
-              >
-                <span
-                  style={{
-                    width: 9,
-                    height: 9,
-                    borderRadius: '50%',
-                    backgroundColor: DOMAIN_COLORS[domain],
-                    display: 'inline-block',
-                    flexShrink: 0,
-                  }}
-                />
-                {DOMAIN_ICONS[domain]} {domain}
-              </span>
-            ))}
-          </div>
-        );
-      })()}
 
       {/* ── Status bar ──────────────────────────────────────── */}
       <div
