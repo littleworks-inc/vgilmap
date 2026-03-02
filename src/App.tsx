@@ -24,6 +24,8 @@ import { fetchNASAFirms } from './adapters/nasa-firms';
 import { fetchNOAAAlerts } from './adapters/noaa';
 import { fetchGDELT } from './adapters/gdelt';
 import { fetchWHOOutbreaks } from './adapters/who';
+import { fetchReliefWeb } from './adapters/reliefweb';
+import { fetchGDELTEconomic } from './adapters/gdelt-economic';
 import type { Domain, VigilEvent } from './types';
 import { DOMAIN_ICONS, DOMAIN_COLORS } from './types';
 import { detectAnomalies } from './intelligence/anomaly';
@@ -72,7 +74,9 @@ const ADAPTERS: Array<{
   { key: 'nasa-firms', label: 'NASA FIRMS',        fetch: fetchNASAFirms },
   { key: 'noaa',       label: 'NOAA Alerts',       fetch: fetchNOAAAlerts },
   { key: 'gdelt',      label: 'GDELT Conflict',     fetch: fetchGDELT },
-  { key: 'who',        label: 'WHO Outbreaks',     fetch: fetchWHOOutbreaks },
+  { key: 'who',        label: 'WHO Outbreaks',   fetch: fetchWHOOutbreaks },
+  { key: 'reliefweb',  label: 'ReliefWeb',        fetch: fetchReliefWeb },
+  { key: 'gdelt-econ', label: 'GDELT Economic',   fetch: fetchGDELTEconomic },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────
