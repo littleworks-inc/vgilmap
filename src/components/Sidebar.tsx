@@ -6,7 +6,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import type { VigilEvent, Domain } from '../types';
+import type { VigilEvent } from '../types';
 import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
 import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
