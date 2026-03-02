@@ -672,7 +672,7 @@
       <h1>Global Intelligence<br /><span>API</span></h1>
       <p class="hero-sub">
         Free, no-auth REST API aggregating real-time events from USGS, NASA FIRMS,
-        NOAA, GDELT, and WHO into a unified schema. No API key required.
+        NOAA, GDELT, WHO, ReliefWeb, and more into a unified schema. No API key required.
       </p>
 
       <div class="hero-chips">
@@ -735,7 +735,7 @@
     <!-- DATA SOURCES -->
     <section id="sources">
       <h2>Data sources</h2>
-      <p>All data is sourced from public APIs and refreshed automatically. VigilMap normalises each source into the unified <strong>VigilEvent</strong> schema.</p>
+      <p>All data is sourced from public APIs and refreshed automatically. VigilMap normalises <strong>8 sources</strong> into the unified <strong>VigilEvent</strong> schema.</p>
       <div class="source-grid">
         <div class="source-card">
           <div class="source-icon">🌋</div>
@@ -770,6 +770,20 @@
           <div>
             <div class="source-name">WHO Disease Outbreak News</div>
             <div class="source-desc">WHO official disease outbreak alerts, filtered for epidemiological relevance.</div>
+          </div>
+        </div>
+        <div class="source-card">
+          <div class="source-icon">💰</div>
+          <div>
+            <div class="source-name">ReliefWeb (UN OCHA)</div>
+            <div class="source-desc">UN humanitarian crisis reports covering food insecurity, economic shocks, and displacement. Updated daily.</div>
+          </div>
+        </div>
+        <div class="source-card">
+          <div class="source-icon">✊</div>
+          <div>
+            <div class="source-name">GDELT Economic</div>
+            <div class="source-desc">GDELT Doc API filtered for economic and labor keywords — sanctions, strikes, inflation, financial crises. Updates every 5 min.</div>
           </div>
         </div>
       </div>

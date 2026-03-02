@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "VigilMap API",
-    "description": "Real-time global intelligence events API. Aggregates USGS earthquakes, NASA wildfires, NOAA weather alerts, conflict news, and disease outbreaks into a unified schema.",
+    "description": "Real-time global intelligence events API. Aggregates USGS earthquakes, NASA wildfires, NOAA weather alerts, GDELT conflict news, WHO disease outbreaks, ReliefWeb humanitarian crises, and GDELT economic/labor events into a unified schema.",
     "version": "1.0.0",
     "contact": { "email": "contact@vigilmap.app" },
     "license": { "name": "MIT" }

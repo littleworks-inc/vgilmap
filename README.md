@@ -10,7 +10,7 @@
 
 ## What it does
 
-VigilMap aggregates **5 real-time data sources** into a single dark-mode globe. Events are color-coded by domain, clustered at low zoom, and scored by an anomaly detection engine that surfaces statistically unusual concentrations.
+VigilMap aggregates **8 real-time data sources** into a single dark-mode globe. Events are color-coded by domain, clustered at low zoom, and scored by an anomaly detection engine that surfaces statistically unusual concentrations.
 
 | Domain | Source | Update Freq |
 |--------|--------|-------------|
@@ -19,6 +19,8 @@ VigilMap aggregates **5 real-time data sources** into a single dark-mode globe. 
 | 🌩 Weather alerts | NOAA National Weather Service | Live |
 | ⚔️ Conflict | GDELT Doc API + BBC/DW/Guardian RSS | Every 3 min |
 | 🏥 Disease outbreaks | WHO Disease Outbreak News | Daily |
+| 💰 Economic crises | ReliefWeb (UN OCHA) | Daily |
+| ✊ Labor events | GDELT Economic news filter | Every 5 min |
 
 ---
 
@@ -92,7 +94,9 @@ src/
 │   ├── nasa-firms.ts            # NASA VIIRS wildfire hotspots
 │   ├── noaa.ts                  # NOAA NWS active weather alerts
 │   ├── gdelt.ts                 # Conflict: GDELT + news RSS (via edge proxies)
-│   └── who.ts                   # WHO Disease Outbreak News RSS
+│   ├── who.ts                   # WHO Disease Outbreak News RSS
+│   ├── reliefweb.ts             # ReliefWeb UN OCHA humanitarian crises
+│   └── gdelt-economic.ts        # GDELT economic/labor news filter
 ├── intelligence/
 │   └── anomaly.ts               # Welford online algorithm — no ML, pure math
 ├── components/
@@ -245,12 +249,15 @@ The app handles adapter failures gracefully — if one throws, the rest keep run
 
 ## Roadmap
 
-- [ ] Economic & labor data sources (World Bank, ILO, BLS)
-- [ ] Keyword search across events
-- [ ] Shareable event URLs (`?event=usgs-abc123`)
+- [x] Economic & labor data sources (ReliefWeb + GDELT Economic)
+- [x] Keyword search across events
+- [x] Shareable event URLs (`?event=usgs-abc123`)
+- [x] Map legend with color swatches + magnitude key
+- [x] API documentation page (`/api-docs.html`)
 - [ ] API key system + Pro tier (webhooks, 90-day history)
 - [ ] Email/SMS alerts for a saved region
 - [ ] Historical timeline slider
+- [ ] PWA manifest + offline support
 
 ---
 
