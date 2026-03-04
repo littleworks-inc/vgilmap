@@ -190,6 +190,13 @@ function renderPopup(props: PopupProps): string {
     secondary = `🏥 WHO Disease Outbreak<br/>Country: ${country}`;
     linkLabel = 'News source ↗';
 
+  } else if (props.domain === 'science') {
+    const tagsArr = Array.isArray(props.tags)
+      ? props.tags
+      : JSON.parse(typeof props.tags === 'string' ? props.tags : '[]');
+    secondary = `🔬 ${props.category} · ${(tagsArr as string[]).join(', ')}`;
+    linkLabel = 'NASA ↗';
+
   } else {
     // Generic: just domain icon + severity badge
     secondary = `${domainIcon} <span style="color:${domainColor};font-weight:600;">${props.domain}</span>`;

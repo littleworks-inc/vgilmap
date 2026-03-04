@@ -26,6 +26,7 @@ import { fetchGDELT } from './adapters/gdelt';
 import { fetchWHOOutbreaks } from './adapters/who';
 import { fetchReliefWeb } from './adapters/reliefweb';
 import { fetchGDELTEconomic } from './adapters/gdelt-economic';
+import { fetchScience } from './adapters/science';
 import type { Domain, VigilEvent } from './types';
 import { DOMAIN_ICONS, DOMAIN_COLORS } from './types';
 import { detectAnomalies } from './intelligence/anomaly';
@@ -77,6 +78,7 @@ const ADAPTERS: Array<{
   { key: 'who',        label: 'WHO Outbreaks',   fetch: fetchWHOOutbreaks },
   { key: 'reliefweb',  label: 'ReliefWeb',        fetch: fetchReliefWeb },
   { key: 'gdelt-econ', label: 'GDELT Economic',   fetch: fetchGDELTEconomic },
+  { key: 'science',    label: 'Science',           fetch: fetchScience },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────
