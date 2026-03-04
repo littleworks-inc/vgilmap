@@ -1,19 +1,10 @@
 /**
- * Science adapter — NASA DONKI Solar Flares, Geomagnetic Storms, NeoWs Asteroids
- * Uses NASA DEMO_KEY (sufficient for low traffic).
+ * Science adapter — proxies through /api/science (Vercel edge function).
+ * Normalizes NASA DONKI Solar Flares, Geomagnetic Storms, and NeoWs Asteroids.
  */
 import type { VigilEvent, Severity } from '../types';
 
-// ── Date helpers ───────────────────────────────────────────
-
-function toYMD(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-const TODAY          = toYMD(new Date());
-const DATE_7_DAYS_AGO = toYMD(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
-
-// ── Solar Flares ───────────────────────────────────────────
+// ── Solar Flare normalizer ─────────────────────────────────
 
 interface FLREvent {
   flrID: string;
@@ -31,14 +22,9 @@ function flrSeverity(classType: string): Severity {
   return 'low';
 }
 
-async function fetchSolarFlares(): Promise<VigilEvent[]> {
-  const url = `https://api.nasa.gov/DONKI/FLR?startDate=${DATE_7_DAYS_AGO}&endDate=${TODAY}&api_key=DEMO_KEY`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`DONKI/FLR ${res.status}`);
-  const data: FLREvent[] = await res.json();
+function normalizeFLR(data: unknown): VigilEvent[] {
   if (!Array.isArray(data)) return [];
-
-  return data.map(ev => ({
+  return (data as FLREvent[]).map(ev => ({
     id: `science-flr-${ev.flrID}`,
     timestamp: ev.beginTime ?? new Date().toISOString(),
     domain: 'science',
@@ -55,7 +41,7 @@ async function fetchSolarFlares(): Promise<VigilEvent[]> {
   }));
 }
 
-// ── Geomagnetic Storms ────────────────────────────────────
+// ── Geomagnetic Storm normalizer ───────────────────────────
 
 interface GSTKp {
   observedTime: string;
@@ -75,14 +61,9 @@ function gstSeverity(kp: number): Severity {
   return 'low';
 }
 
-async function fetchGeomagneticStorms(): Promise<VigilEvent[]> {
-  const url = `https://api.nasa.gov/DONKI/GST?startDate=${DATE_7_DAYS_AGO}&endDate=${TODAY}&api_key=DEMO_KEY`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`DONKI/GST ${res.status}`);
-  const data: GSTEvent[] = await res.json();
+function normalizeGST(data: unknown): VigilEvent[] {
   if (!Array.isArray(data)) return [];
-
-  return data.map(ev => {
+  return (data as GSTEvent[]).map(ev => {
     const kpIndex = ev.allKpIndex?.[0]?.kpIndex ?? 0;
     return {
       id: `science-gst-${ev.gstID}`,
@@ -102,7 +83,7 @@ async function fetchGeomagneticStorms(): Promise<VigilEvent[]> {
   });
 }
 
-// ── Near-Earth Asteroids ──────────────────────────────────
+// ── Near-Earth Asteroid normalizer ────────────────────────
 
 interface NeoObject {
   id: string;
@@ -130,14 +111,12 @@ function neoSeverity(missKm: number): Severity {
   return 'low';
 }
 
-async function fetchAsteroids(): Promise<VigilEvent[]> {
-  const url = `https://api.nasa.gov/neo/rest/v1/feed?start_date=${TODAY}&end_date=${TODAY}&api_key=DEMO_KEY`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`NeoWs ${res.status}`);
-  const data: NeoFeed = await res.json();
-
+function normalizeNeo(data: unknown): VigilEvent[] {
+  if (!data || typeof data !== 'object') return [];
+  const feed = data as NeoFeed;
   const events: VigilEvent[] = [];
-  for (const dayObjects of Object.values(data.near_earth_objects ?? {})) {
+
+  for (const dayObjects of Object.values(feed.near_earth_objects ?? {})) {
     for (const neo of dayObjects) {
       if (!neo.is_potentially_hazardous_asteroid) continue;
       const approach = neo.close_approach_data?.[0];
@@ -170,22 +149,22 @@ async function fetchAsteroids(): Promise<VigilEvent[]> {
 // ── Main export ───────────────────────────────────────────
 
 export async function fetchScience(): Promise<VigilEvent[]> {
-  const results = await Promise.allSettled([
-    fetchSolarFlares(),
-    fetchGeomagneticStorms(),
-    fetchAsteroids(),
-  ]);
+  try {
+    const res = await fetch('/api/science');
+    if (!res.ok) throw new Error(`/api/science ${res.status}`);
+    const { flr, gst, neo } = await res.json();
 
-  const all: VigilEvent[] = [];
-  for (const r of results) {
-    if (r.status === 'fulfilled') {
-      all.push(...r.value);
-    } else {
-      console.warn('[Science]', r.reason);
-    }
+    const all: VigilEvent[] = [
+      ...normalizeFLR(flr),
+      ...normalizeGST(gst),
+      ...normalizeNeo(neo),
+    ];
+
+    return all.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  } catch (err) {
+    console.warn('[Science]', err);
+    return [];
   }
-
-  return all.sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-  );
 }
