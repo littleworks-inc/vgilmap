@@ -96,6 +96,12 @@ function EventMeta({ event }: { event: VigilEvent }) {
     const type = meta.event_type as string | undefined;
     return type ? <span style={{ color: '#60a5fa' }}>{type}</span> : null;
   }
+  if (event.domain === 'science') {
+    const tags = (event.tags ?? []).slice(0, 2).join(' · ');
+    return tags ? (
+      <span style={{ color: '#10b981' }}>{tags}</span>
+    ) : null;
+  }
   return null;
 }
 
@@ -555,7 +561,7 @@ export function Sidebar({
           textAlign: 'center',
         }}
       >
-        USGS · NASA FIRMS · NOAA · GDELT · WHO · MIT License
+        USGS · NASA FIRMS · NOAA · GDELT · WHO · NASA DONKI · MIT License
       </div>
     </aside>
   );
