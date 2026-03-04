@@ -211,7 +211,16 @@ export function Sidebar({
           background: '#0a0f1e',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <a
+          href="/"
+          style={{
+            textDecoration: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            cursor: 'pointer',
+          }}
+        >
           <span style={{ fontSize: '22px' }}>🌍</span>
           <div>
             <h1
@@ -229,7 +238,7 @@ export function Sidebar({
               Global Intelligence Platform
             </p>
           </div>
-        </div>
+        </a>
       </div>
 
       {/* ── AI Intel Brief ───────────────────────────────────── */}
