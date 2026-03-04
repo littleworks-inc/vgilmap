@@ -322,6 +322,16 @@ export function Globe({ events, onEventClick }: GlobeProps) {
         cluster: true,
         clusterMaxZoom: 5,
         clusterRadius: 40,
+        // Aggregate per-domain event counts so we can color by dominant domain
+        clusterProperties: {
+          cnt_disaster: ['+', ['case', ['==', ['get', 'domain'], 'disaster'], 1, 0]],
+          cnt_climate:  ['+', ['case', ['==', ['get', 'domain'], 'climate'],  1, 0]],
+          cnt_health:   ['+', ['case', ['==', ['get', 'domain'], 'health'],   1, 0]],
+          cnt_conflict: ['+', ['case', ['==', ['get', 'domain'], 'conflict'], 1, 0]],
+          cnt_economic: ['+', ['case', ['==', ['get', 'domain'], 'economic'], 1, 0]],
+          cnt_labor:    ['+', ['case', ['==', ['get', 'domain'], 'labor'],    1, 0]],
+          cnt_science:  ['+', ['case', ['==', ['get', 'domain'], 'science'],  1, 0]],
+        },
       });
 
       // ── Cluster circles ──────────────────────────────────
@@ -331,12 +341,48 @@ export function Globe({ events, onEventClick }: GlobeProps) {
         source: SOURCE_ID,
         filter: ['has', 'point_count'],
         paint: {
+          // Color = dominant domain inside the cluster
           'circle-color': [
-            'step',
-            ['get', 'point_count'],
-            '#f97316',   // orange  < 10
-            10, '#ef4444',  // red    10-30
-            30, '#7c3aed',  // purple 30+
+            'case',
+            // disaster leads?
+            ['all',
+              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_climate']],
+              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_health']],
+              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_conflict']],
+              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_economic']],
+              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_labor']],
+              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_science']],
+            ], '#ef4444',
+            // conflict leads?
+            ['all',
+              ['>=', ['get', 'cnt_conflict'], ['get', 'cnt_climate']],
+              ['>=', ['get', 'cnt_conflict'], ['get', 'cnt_health']],
+              ['>=', ['get', 'cnt_conflict'], ['get', 'cnt_economic']],
+              ['>=', ['get', 'cnt_conflict'], ['get', 'cnt_labor']],
+              ['>=', ['get', 'cnt_conflict'], ['get', 'cnt_science']],
+            ], '#7c3aed',
+            // climate leads?
+            ['all',
+              ['>=', ['get', 'cnt_climate'], ['get', 'cnt_health']],
+              ['>=', ['get', 'cnt_climate'], ['get', 'cnt_economic']],
+              ['>=', ['get', 'cnt_climate'], ['get', 'cnt_labor']],
+              ['>=', ['get', 'cnt_climate'], ['get', 'cnt_science']],
+            ], '#22d3ee',
+            // health leads?
+            ['all',
+              ['>=', ['get', 'cnt_health'], ['get', 'cnt_economic']],
+              ['>=', ['get', 'cnt_health'], ['get', 'cnt_labor']],
+              ['>=', ['get', 'cnt_health'], ['get', 'cnt_science']],
+            ], '#ec4899',
+            // economic leads?
+            ['all',
+              ['>=', ['get', 'cnt_economic'], ['get', 'cnt_labor']],
+              ['>=', ['get', 'cnt_economic'], ['get', 'cnt_science']],
+            ], '#eab308',
+            // labor leads?
+            ['>=', ['get', 'cnt_labor'], ['get', 'cnt_science']], '#3b82f6',
+            // science fallback
+            '#10b981',
           ],
           'circle-radius': [
             'step',
