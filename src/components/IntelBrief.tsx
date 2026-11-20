@@ -47,12 +47,26 @@ interface IntelBriefProps {
   anomalySignals?: AnomalySignal[];
 }
 
+const BRIEF_STORAGE_KEY = 'vigil.brief.v1';
+
+/** The last brief, if it is still fresh. Regenerating costs an API call and hits a rate limit. */
+function loadStoredBrief(): { brief: string; source: BriefSource; time: Date } | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(BRIEF_STORAGE_KEY) ?? 'null') as { brief?: string; source?: BriefSource; time?: number } | null;
+    if (!raw?.brief || !raw.time || Date.now() - raw.time > REFRESH_AFTER_MS) return null;
+    return { brief: raw.brief, source: raw.source === 'ai' ? 'ai' : 'local', time: new Date(raw.time) };
+  } catch {
+    return null;
+  }
+}
+
 export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
-  const [brief, setBrief]             = useState<string | null>(null);
-  const [source, setSource]           = useState<BriefSource>('local');
+  const [stored] = useState(loadStoredBrief); // read once, on mount
+  const [brief, setBrief]             = useState<string | null>(stored?.brief ?? null);
+  const [source, setSource]           = useState<BriefSource>(stored?.source ?? 'local');
   const [loading, setLoading]         = useState(false);
-  const [generatedAt, setGeneratedAt] = useState<Date | null>(null);
-  const [expanded, setExpanded]       = useState(false);
+  const [generatedAt, setGeneratedAt] = useState<Date | null>(stored?.time ?? null);
+  const [expanded, setExpanded]       = useState(stored != null);
   const [cooldown, setCooldown]       = useState(0); // seconds remaining
 
   // Stable cache ref so rapid re-renders don't lose the last brief
@@ -104,6 +118,9 @@ export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
     const now = new Date();
     setGeneratedAt(now);
     cacheRef.current = { brief: result.brief, source: result.source, time: now };
+    try {
+      localStorage.setItem(BRIEF_STORAGE_KEY, JSON.stringify({ brief: result.brief, source: result.source, time: now.getTime() }));
+    } catch { /* storage unavailable: the brief just won't survive a refresh */ }
     setLoading(false);
   }, [events, loading, cooldown, startCooldown]);
 

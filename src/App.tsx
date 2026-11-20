@@ -18,6 +18,7 @@ import { LiveTicker } from './components/LiveTicker';
 import { AnimatedCount } from './components/AnimatedCount';
 import { useIsMobile } from './hooks/useIsMobile';
 import { usePersistedBool } from './hooks/usePersistedBool';
+import { readViewState, writeViewState, isDefaultView } from './utils/viewState';
 import { MobileDrawer } from './components/MobileDrawer';
 import { fetchUSGSEarthquakes } from './adapters/usgs';
 import { fetchUSGSSignificantWeek } from './adapters/usgs-significant-week';
@@ -298,13 +299,18 @@ export default function App() {
   const [errors, setErrors]             = useState<string[]>([]);
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null);
   const [selectedId, setSelectedId]     = useState<string | undefined>(getEventIdFromURL() ?? undefined);
-  const [activeDomains, setActiveDomains] = useState<Set<Domain>>(new Set(ALL_DOMAINS));
+  // The view (time window + hidden domains) survives a refresh: URL > last saved > defaults.
+  // Globe position, search text and the cyber drill-down intentionally start fresh.
+  const [initialView] = useState(() => readViewState(ALL_DOMAINS));
+  const [activeDomains, setActiveDomains] = useState<Set<Domain>>(
+    () => new Set(ALL_DOMAINS.filter(d => !initialView.hidden.includes(d))),
+  );
 
   const globeContainerRef = useRef<HTMLDivElement>(null);
   const hasDeepLinked     = useRef(false);
   const loadRunRef        = useRef(0);
   const [cyberFocus, setCyberFocus] = useState<CyberFocus | null>(null);
-  const [timeWindow, setTimeWindow] = useState<TimeWindowId>(DEFAULT_TIME_WINDOW);
+  const [timeWindow, setTimeWindow] = useState<TimeWindowId>(initialView.timeWindow);
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>(() =>
     ADAPTERS.map(a => ({
       key: a.key, label: a.label, domain: a.domain, status: 'loading' as const, count: 0, warnings: [], startedAt: Date.now(), optional: a.optional,
@@ -375,6 +381,17 @@ export default function App() {
     const interval = setInterval(load, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [load]);
+
+  // Keep the URL and saved view in sync with the controls.
+  const hiddenDomains = useMemo(() => ALL_DOMAINS.filter(d => !activeDomains.has(d)), [activeDomains]);
+  const viewIsDefault = isDefaultView({ timeWindow, hidden: hiddenDomains });
+  useEffect(() => {
+    writeViewState({ timeWindow, hidden: hiddenDomains });
+  }, [timeWindow, hiddenDomains]);
+  const resetView = useCallback(() => {
+    setTimeWindow(DEFAULT_TIME_WINDOW);
+    setActiveDomains(new Set(ALL_DOMAINS));
+  }, []);
 
   // ── Domain filter ────────────────────────────────────────
   const toggleDomain = useCallback((domain: Domain) => {
@@ -515,6 +532,9 @@ export default function App() {
           onClearAll={clearAll}
           timeWindow={timeWindow}
           onTimeWindow={setTimeWindow}
+          viewIsDefault={viewIsDefault}
+          viewSummary={`${timeWindow === DEFAULT_TIME_WINDOW ? '' : `window ${timeWindow}`}${timeWindow !== DEFAULT_TIME_WINDOW && hiddenDomains.length ? ' · ' : ''}${hiddenDomains.length ? `${hiddenDomains.length} domain${hiddenDomains.length === 1 ? '' : 's'} hidden` : ''}`}
+          onResetView={resetView}
         />
 
         <div ref={globeContainerRef} style={{ flex: 1, position: 'relative' }}>

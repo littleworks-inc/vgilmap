@@ -46,6 +46,11 @@ interface DomainFilterProps {
   onClearAll: () => void;
   timeWindow: TimeWindowId;
   onTimeWindow: (id: TimeWindowId) => void;
+  /** True when the time window and domain chips are at their defaults. */
+  viewIsDefault: boolean;
+  /** Short description of what differs from the default, for the tooltip. */
+  viewSummary: string;
+  onResetView: () => void;
 }
 
 export function DomainFilter({
@@ -56,6 +61,9 @@ export function DomainFilter({
   onClearAll,
   timeWindow,
   onTimeWindow,
+  viewIsDefault,
+  viewSummary,
+  onResetView,
 }: DomainFilterProps) {
   // With 9 domains the chips don't fit in one row on a laptop: wrap them there (so none is hidden),
   // and keep the single scrollable row on phones where vertical space is scarce.
@@ -165,12 +173,27 @@ export function DomainFilter({
         </>
       )}
 
+      {/* The view is remembered across refreshes, so say so when it isn't the default: otherwise a
+          filter from yesterday looks like missing data. */}
+      {!viewIsDefault && (
+        <button
+          onClick={onResetView}
+          title={`Your saved view is active (${viewSummary}). Click to return to the default view.`}
+          style={{
+            ...pillBase, flexShrink: 0, background: '#422006', color: '#fbbf24',
+            border: '1px solid #92400e', fontSize: '11px', padding: '3px 10px', marginLeft: 'auto',
+          }}
+        >
+          ↺ Filters active · Reset view
+        </button>
+      )}
+
       {/* Time window — pushed to the right edge */}
       <div
         role="group"
         aria-label="Time window"
         style={{
-          marginLeft: 'auto', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '2px',
+          marginLeft: viewIsDefault ? 'auto' : '8px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '2px',
           background: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', padding: '2px',
           // The chips row scrolls sideways when there are many domains; keep this control pinned
           // to the right edge (with a soft fade) instead of letting it scroll out of view.
