@@ -8,6 +8,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { VigilEvent } from '../types';
 import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS, isMappable, NO_MAP_LOCATION } from '../types';
+import { safeHttpUrl } from '../utils/html';
 import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
@@ -193,6 +194,29 @@ function ShareButton({ eventId }: { eventId: string }) {
   );
 }
 
+/**
+ * Link to the original report. An event with no map location never gets a map popup, so this link
+ * (and the summary shown when its row is opened) is the only way to reach what the event is about.
+ * Only http(s) URLs are linked.
+ */
+function SourceLink({ event, label }: { event: VigilEvent; label?: string }) {
+  const href = safeHttpUrl(event.sourceUrl);
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`Open the original report on ${event.source}`}
+      onClick={e => e.stopPropagation()}
+      onKeyDown={e => e.stopPropagation()}
+      style={{ color: '#60a5fa', textDecoration: 'none', whiteSpace: 'nowrap' }}
+    >
+      {label ?? 'source ↗'}
+    </a>
+  );
+}
+
 type ListFilter = 'all' | 'map' | 'nomap';
 type ListRow = { kind: 'event'; ev: VigilEvent } | { kind: 'kev'; events: VigilEvent[] };
 
@@ -221,6 +245,7 @@ export function Sidebar({
   // List-only controls: transient (they start fresh on refresh, like search and Show all).
   const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [kevOpen, setKevOpen]       = useState(false);
+  const [openId, setOpenId]         = useState<string | null>(null); // which no-location row is expanded
   const INITIAL_COUNT = 50;
   // Normalize search query
   const trimmed = query.trim().toLowerCase();
@@ -279,11 +304,23 @@ export function Sidebar({
           const isSelected = ev.id === selectedId;
           // For earthquakes show the location label; for all others show the title
           const primaryText = ev.category === 'earthquake' ? ev.location.label : ev.title;
+          const unmapped = !isMappable(ev);
+          const expanded = unmapped && openId === ev.id;
+          // Mapped events fly the map to them. Unmapped ones have nowhere to fly, so the click
+          // opens their details instead of doing nothing.
+          const activate = () => {
+            onSelectEvent(ev);
+            if (unmapped) setOpenId(expanded ? null : ev.id);
+          };
 
           return (
-            <button
+            <div
               key={ev.id}
-              onClick={() => onSelectEvent(ev)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={unmapped ? expanded : undefined}
+              onClick={activate}
+              onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); activate(); } }}
               style={{
                 width: '100%',
                 textAlign: 'left',
@@ -316,7 +353,7 @@ export function Sidebar({
                     fontSize: '13px',
                     fontWeight: 500,
                     color: '#e2e8f0',
-                    whiteSpace: 'nowrap',
+                    whiteSpace: expanded ? 'normal' : 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                   }}
@@ -335,6 +372,7 @@ export function Sidebar({
                   }}
                 >
                   <span>{timeAgo(ev.timestamp)}</span>
+                  <SourceLink event={ev} />
                   <EventMeta event={ev} />
                   {/* One consistent marker for every event that is listed but not plotted */}
                   {!isMappable(ev) && (
@@ -345,10 +383,25 @@ export function Sidebar({
                       {NO_MAP_LOCATION}
                     </span>
                   )}
+                  {unmapped && <span aria-hidden style={{ color: '#7d8ba1' }}>{expanded ? 'details ▴' : 'details ▾'}</span>}
                   <ShareButton eventId={ev.id} />
                 </div>
+
+                {/* What the event is about, for events that have no map popup to show it */}
+                {expanded && (
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: '#cbd5e1', lineHeight: 1.45, whiteSpace: 'normal', cursor: 'default' }}
+                       onClick={e => e.stopPropagation()}>
+                    <div>{ev.description}</div>
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: '#8a99ae' }}>
+                      {ev.source} · {new Date(ev.timestamp).toLocaleString()}
+                    </div>
+                    <div style={{ marginTop: '6px', fontSize: '12px' }}>
+                      <SourceLink event={ev} label={`Read the report on ${ev.source} ↗`} />
+                    </div>
+                  </div>
+                )}
               </div>
-            </button>
+            </div>
           );
   };
 
