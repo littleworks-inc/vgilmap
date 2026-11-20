@@ -21,7 +21,7 @@ VigilMap aggregates **8 real-time data sources** into a single dark-mode globe. 
 | 🏥 Disease outbreaks | WHO Disease Outbreak News API | Daily |
 | 🌍 Humanitarian disasters | ReliefWeb Disasters RSS (UN OCHA) | As declared |
 | 🔬 Space weather | NOAA SWPC solar flares (M/X class) + NASA DONKI storms + NASA NeoWs asteroids | Live |
-| 🛡️ Cyber | ransomware.live claims + CISA KEV | Every 10 min |
+| 🛡️ Cyber | ransomware.live claims, CISA KEV, Have I Been Pwned breaches, and security-news incident headlines (BleepingComputer, The Hacker News, Krebs, The Record, SecurityWeek, Dark Reading, CyberScoop) | 10 min – 6 hrs |
 | 💰 Economic & ✊ labor | BBC Business / DW / Guardian Economics / Al Jazeera / NPR RSS, filtered to crisis and labor headlines | Every 10 min |
 
 ---
@@ -286,3 +286,4 @@ MIT — see [LICENSE](LICENSE).
 - NOAA NWS alerts: public domain (U.S. Government)
 - GDELT: open data — [GDELT Project terms](https://www.gdeltproject.org/about.html)
 - WHO Disease Outbreak News: © World Health Organization
+- Have I Been Pwned breach data: © Troy Hunt, CC BY 4.0 (https://haveibeenpwned.com)

@@ -51,6 +51,12 @@ export type Category =
   | 'ransomware'
   | 'vulnerability'
   | 'data-breach'
+  | 'malware'
+  | 'ddos'
+  | 'phishing'
+  | 'supply-chain'
+  | 'espionage'
+  | 'cyberattack'
   | string; // Allow arbitrary categories from future adapters
 
 export interface EventLocation {

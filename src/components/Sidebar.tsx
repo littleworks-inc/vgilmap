@@ -114,6 +114,18 @@ function EventMeta({ event }: { event: VigilEvent }) {
       </span>
     );
   }
+  if (event.domain === 'cyber' && event.category !== 'ransomware' && event.category !== 'vulnerability') {
+    // data breaches and cyber-incident news: say who was impacted, and how big
+    const impacted = meta.impacted as string | undefined;
+    const accounts = meta.pwnCount != null ? `${Number(meta.pwnCount).toLocaleString()} accounts` : null;
+    const kind = (meta.kind as string | undefined) ?? event.category.replace('-', ' ');
+    return (
+      <span style={{ color: '#84cc16' }}>
+        {[kind, impacted && `impacted${meta.pwnCount == null ? ' (per headline)' : ''}: ${impacted}`, accounts].filter(Boolean).join(' · ')}
+        {Boolean(meta.unlocated) && <span style={{ color: '#8a99ae' }}> · no map location</span>}
+      </span>
+    );
+  }
   if (event.category === 'vulnerability') {
     const vendor = meta.vendor as string | undefined;
     const product = meta.product as string | undefined;

@@ -17,6 +17,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { VigilEvent } from '../types';
 import { isMappable } from '../types';
+import { escapeHtml as esc, safeHttpUrl } from '../utils/html';
 import { earthquakeColor, earthquakeRadius, DOMAIN_COLORS } from '../types';
 
 // ─── constants ─────────────────────────────────────────────
@@ -44,6 +45,12 @@ CLUSTER_COLOR_EXPR.push(POPUP_DOMAIN_COLORS[CLUSTER_DOMAINS[CLUSTER_DOMAINS.leng
 const POPUP_DOMAIN_ICONS: Record<string, string> = {
   disaster: '🌋', climate: '🌡️', health: '🏥',
   conflict: '⚔️', economic: '💰', labor: '✊', science: '🔬', cyber: '🛡️',
+};
+const CYBER_LABELS: Record<string, string> = {
+  'data-breach': 'Data breach', ransomware: 'Ransomware', malware: 'Malware', ddos: 'DDoS attack',
+  phishing: 'Phishing / scam', 'supply-chain': 'Supply-chain attack', espionage: 'State-linked / espionage',
+  cyberattack: 'Cyber incident',
+  vulnerability: 'Exploited vulnerability',
 };
 const POPUP_SEVERITY_COLORS: Record<string, string> = {
   critical: '#7c3aed', high: '#ef4444', medium: '#f97316',
@@ -102,6 +109,7 @@ function eventsToGeoJSON(
       },
       properties: {
         id: ev.id,
+        source: ev.source,
         title: ev.title,
         severity: ev.severity,
         category: ev.category,
@@ -178,16 +186,16 @@ function renderPopup(props: PopupProps): string {
   } else if (props.category === 'wildfire') {
     const frp        = meta.frp        != null ? `${Number(meta.frp).toFixed(0)} MW` : '?';
     const brightness = meta.brightness != null ? `${Number(meta.brightness).toFixed(0)} K` : '?';
-    const sat        = (meta.satellite as string) ?? 'VIIRS';
+    const sat        = esc((meta.satellite as string) ?? 'VIIRS');
     const confRaw    = (meta.confidence_raw as string) ?? 'n';
     const confLabel  = confRaw === 'h' ? 'High' : confRaw === 'l' ? 'Low' : 'Nominal';
     secondary = `🔥 FRP: ${frp} · Brightness: ${brightness}<br/>Satellite: ${sat} · Confidence: ${confLabel}`;
     linkLabel = 'NASA FIRMS ↗';
 
   } else if (props.category === 'extreme-weather') {
-    const evType    = (meta.event_type  as string) ?? 'Weather Alert';
-    const certainty = (meta.certainty   as string) ?? '';
-    const urgency   = (meta.urgency     as string) ?? '';
+    const evType    = esc((meta.event_type  as string) ?? 'Weather Alert');
+    const certainty = esc((meta.certainty   as string) ?? '');
+    const urgency   = esc((meta.urgency     as string) ?? '');
     const expires   = meta.expires
       ? new Date(meta.expires as string).toLocaleDateString()
       : '';
@@ -197,9 +205,9 @@ function renderPopup(props: PopupProps): string {
     linkLabel = 'NWS Alert ↗';
 
   } else if (props.category === 'armed-conflict' || props.category === 'protest') {
-    const evType    = (meta.event_type     as string) ?? props.category;
-    const subType   = (meta.sub_event_type as string) ?? '';
-    const actor     = (meta.actor1         as string) ?? '';
+    const evType    = esc((meta.event_type     as string) ?? props.category);
+    const subType   = esc((meta.sub_event_type as string) ?? '');
+    const actor     = esc((meta.actor1         as string) ?? '');
     const deaths    = meta.fatalities != null ? Number(meta.fatalities) : null;
     const fatalLine = deaths !== null
       ? (deaths > 0 ? `${deaths} fatalities` : 'No fatalities reported')
@@ -210,33 +218,44 @@ function renderPopup(props: PopupProps): string {
     linkLabel = 'GDELT news ↗';
 
   } else if (props.category === 'outbreak') {
-    const country = (meta.country as string) ?? props.domain;
+    const country = esc((meta.country as string) ?? props.domain);
     secondary = `🏥 WHO Disease Outbreak<br/>Country: ${country}`;
     linkLabel = 'News source ↗';
 
   } else if (props.category === 'ransomware') {
-    const victim = (meta.victim as string) ?? 'Unknown';
-    const sector = (meta.sector as string) ?? 'Unknown';
-    const group = (meta.group as string) ?? 'Unknown';
+    const victim = esc((meta.victim as string) ?? 'Unknown');
+    const sector = esc((meta.sector as string) ?? 'Unknown');
+    const group = esc((meta.group as string) ?? 'Unknown');
     secondary = `🛡️ Ransomware<br/>Victim: ${victim}<br/>Sector: ${sector} · Group: ${group}`;
     linkLabel = 'ransomware.live ↗';
 
   } else if (props.category === 'vulnerability') {
-    const vendor = (meta.vendor as string) ?? '';
-    const product = (meta.product as string) ?? '';
+    const vendor = esc((meta.vendor as string) ?? '');
+    const product = esc((meta.product as string) ?? '');
     secondary = `🛡️ Actively exploited vulnerability<br/>${vendor} ${product}${meta.ransomwareUse ? '<br/>Used in ransomware campaigns' : ''}`;
     linkLabel = 'NVD ↗';
+
+  } else if (props.domain === 'cyber') {
+    // Breaches and incident-news headlines (ransomware claims and KEV have their own branches above).
+    const label = CYBER_LABELS[props.category] ?? 'Cyber incident';
+    const impacted = meta.impacted ? esc(meta.impacted) : '';
+    const accounts = meta.pwnCount != null ? Number(meta.pwnCount).toLocaleString() : '';
+    const dataTypes = Array.isArray(meta.dataClasses) ? esc((meta.dataClasses as unknown[]).slice(0, 4).join(', ')) : '';
+    secondary = `🛡️ ${esc(label)}`;
+    if (impacted) secondary += `<br/>Impacted${meta.pwnCount != null ? '' : ' (per headline)'}: ${impacted}${accounts ? ` · ${accounts} accounts` : ''}`;
+    if (dataTypes) secondary += `<br/>Data: ${dataTypes}`;
+    linkLabel = props.source ? `${esc(props.source)} ↗` : 'Source ↗';
 
   } else if (props.domain === 'science') {
     const tagsArr = Array.isArray(props.tags)
       ? props.tags
       : JSON.parse(typeof props.tags === 'string' ? props.tags : '[]');
-    secondary = `🔬 ${props.category} · ${(tagsArr as string[]).join(', ')}`;
+    secondary = `🔬 ${esc(props.category)} · ${esc((tagsArr as string[]).join(', '))}`;
     linkLabel = 'NASA ↗';
 
   } else {
     // Generic: just domain icon + severity badge
-    secondary = `${domainIcon} <span style="color:${domainColor};font-weight:600;">${props.domain}</span>`;
+    secondary = `${domainIcon} <span style="color:${domainColor};font-weight:600;">${esc(props.domain)}</span>`;
   }
 
   // ── truncate description ────────────────────────────────
@@ -246,6 +265,8 @@ function renderPopup(props: PopupProps): string {
 
   // ── timestamp ───────────────────────────────────────────
   const ts = new Date(props.timestamp).toLocaleString();
+  // Only http(s) links; a feed-supplied `javascript:` URL must never become a clickable href.
+  const href = safeHttpUrl(props.sourceUrl);
 
   return `
     <div style="
@@ -258,13 +279,13 @@ function renderPopup(props: PopupProps): string {
     ">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">
         <strong style="font-size:14px;color:#f1f5f9;line-height:1.3;flex:1;">
-          ${domainIcon} ${props.title ?? 'Event'}
+          ${domainIcon} ${esc(props.title ?? 'Event')}
         </strong>
         <span style="
           font-size:10px;padding:2px 7px;border-radius:10px;
           background:${severityColor}22;border:1px solid ${severityColor};
           color:${severityColor};white-space:nowrap;flex-shrink:0;font-weight:600;
-        ">${props.severity}</span>
+        ">${esc(props.severity)}</span>
       </div>
 
       <div style="color:${domainColor};font-size:12px;margin-bottom:6px;line-height:1.5;">
@@ -273,10 +294,10 @@ function renderPopup(props: PopupProps): string {
 
       <div style="color:#64748b;font-size:11px;margin-bottom:6px;">${ts}</div>
 
-      ${desc ? `<div style="color:#94a3b8;font-size:12px;margin-bottom:8px;line-height:1.4;">${desc}</div>` : ''}
+      ${desc ? `<div style="color:#94a3b8;font-size:12px;margin-bottom:8px;line-height:1.4;">${esc(desc)}</div>` : ''}
 
-      ${props.sourceUrl
-        ? `<a href="${props.sourceUrl}" target="_blank" rel="noopener"
+      ${href
+        ? `<a href="${href}" target="_blank" rel="noopener noreferrer"
              style="color:#3b82f6;font-size:12px;text-decoration:none;"
            >${linkLabel}</a>`
         : ''}

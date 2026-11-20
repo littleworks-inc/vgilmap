@@ -28,6 +28,8 @@ import { fetchReliefWeb } from './adapters/reliefweb';
 import { fetchEconomicNews } from './adapters/economic-news';
 import { fetchScience } from './adapters/science';
 import { fetchCyber } from './adapters/cyber';
+import { fetchCyberBreaches } from './adapters/cyber-breaches';
+import { fetchCyberNews } from './adapters/cyber-news';
 import type { CyberFocus, Domain, TimeWindowId, VigilEvent } from './types';
 import { DOMAIN_ICONS, DOMAIN_COLORS, DEFAULT_TIME_WINDOW, isMappable, matchesCyberFocus, timeWindowMs } from './types';
 import { detectAnomalies } from './intelligence/anomaly';
@@ -91,7 +93,9 @@ const ADAPTERS: Array<{
   { key: 'reliefweb',  label: 'ReliefWeb Disasters', domain: 'disaster', staleAfterHours: 1080, fetch: fetchReliefWeb },
   { key: 'economic-news', label: 'Economic & Labor News', domain: 'economic', staleAfterHours: 24, fetch: fetchEconomicNews },
   { key: 'science',    label: 'NASA Space Weather', domain: 'science', staleAfterHours: 168, fetch: fetchScience },
-  { key: 'cyber',      label: 'Cyber',             domain: 'cyber',    staleAfterHours: 72,  fetch: fetchCyber },
+  { key: 'cyber',      label: 'Ransomware & KEV',  domain: 'cyber',    staleAfterHours: 72,  fetch: fetchCyber },
+  { key: 'cyber-breaches', label: 'Data Breaches (HIBP)', domain: 'cyber', staleAfterHours: 504, fetch: fetchCyberBreaches },
+  { key: 'cyber-news', label: 'Cyber Incident News', domain: 'cyber',  staleAfterHours: 24,  fetch: fetchCyberNews },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────
