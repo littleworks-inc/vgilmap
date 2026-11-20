@@ -17,6 +17,7 @@ import { DomainFilter } from './components/DomainFilter';
 import { LiveTicker } from './components/LiveTicker';
 import { AnimatedCount } from './components/AnimatedCount';
 import { useIsMobile } from './hooks/useIsMobile';
+import { usePersistedBool } from './hooks/usePersistedBool';
 import { MobileDrawer } from './components/MobileDrawer';
 import { fetchUSGSEarthquakes } from './adapters/usgs';
 import { fetchUSGSSignificantWeek } from './adapters/usgs-significant-week';
@@ -134,6 +135,7 @@ function DomainCountPill({
   // `events` is everything currently in view (same set the top chips count). The legend shows how
   // many of those are actually plotted: events with no real location (CISA KEV, solar flares,
   // regional WHO notices, most breach/news items) are list-only, so "of N" explains the gap.
+  const [open, setOpen] = usePersistedBool('vigil.legend.open', true);
   const totals = useMemo(() => countByDomain(events), [events]);
   const onMap = useMemo(() => countByDomain(events.filter(isMappable)), [events]);
   const counts = onMap;
@@ -153,24 +155,41 @@ function DomainCountPill({
         borderRadius: '10px',
         backdropFilter: 'blur(8px)',
         zIndex: 5,
-        pointerEvents: 'none',
+        // Must catch the mouse: with `pointer-events: none`, clicking or dragging the legend fell
+        // through to the globe underneath and rotated/selected things on the map.
+        pointerEvents: 'auto',
+        userSelect: 'none',
         minWidth: '160px',
         maxWidth: '210px', // the footnote must wrap, not stretch the legend across the map
         overflow: 'hidden',
       }}
     >
-      {/* ── Legend header ── */}
-      <div style={{
-        padding: '6px 12px',
-        borderBottom: '1px solid #1e293b',
-        fontSize: '9px',
-        fontWeight: 700,
-        letterSpacing: '0.12em',
-        textTransform: 'uppercase' as const,
-        color: '#334155',
-      }}>
-        Map Legend
+      {/* ── Legend header (click to collapse so it doesn't cover the globe) ── */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        title={open ? 'Collapse legend' : 'Expand legend'}
+        onClick={() => setOpen(o => !o)}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
+        style={{
+          padding: '6px 12px',
+          borderBottom: open ? '1px solid #1e293b' : 'none',
+          fontSize: '9px',
+          fontWeight: 700,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase' as const,
+          color: '#7d8ba1',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          gap: '12px',
+        }}
+      >
+        <span>Map Legend</span>
+        <span aria-hidden>{open ? '▾' : '▸'}</span>
       </div>
+      {open && (<>
       {/* ── Domain rows ── */}
       <div style={{ padding: '6px 0' }}>
         {active.map(([domain, total]) => {
@@ -254,8 +273,9 @@ function DomainCountPill({
           ))}
         </div>
       )}
+      </>)}
       {/* ── Last updated ── */}
-      {lastUpdated && (
+      {open && lastUpdated && (
         <div style={{
           borderTop: '1px solid #1e293b',
           padding: '5px 12px',
