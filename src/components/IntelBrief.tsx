@@ -14,7 +14,7 @@
  * └─────────────────────────────────────┘
  *
  * Source badges:
- *   ✨ AI   — brief came from an OpenRouter model
+ *   ✨ AI   — brief came from an AI model via /api/brief
  *   📊 Auto — brief was generated locally (all models unavailable)
  *
  * Cooldown: Generate/Regenerate is disabled for 30 s after each click,
@@ -37,7 +37,6 @@ function timeAgo(date: Date): string {
   return `${Math.floor(mins / 60)}h ago`;
 }
 
-const NO_KEY_SNIPPET   = 'Add VITE_OPENROUTER_API_KEY';
 const REFRESH_AFTER_MS = 10 * 60 * 1000; // 10 minutes
 const COOLDOWN_SEC     = 30;              // seconds between Generate clicks
 
@@ -60,7 +59,6 @@ export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
   const cacheRef = useRef<{ brief: string; source: BriefSource; time: Date } | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isNoKey = brief?.startsWith(NO_KEY_SNIPPET) ?? false;
   const isOld   = generatedAt
     ? Date.now() - generatedAt.getTime() > REFRESH_AFTER_MS
     : false;
@@ -149,7 +147,7 @@ export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
           <span>World Brief</span>
 
           {/* Source badge — only when a brief exists and is not the no-key message */}
-          {brief && !isNoKey && (
+          {brief && (
             <span
               style={{
                 fontSize: '10px',
@@ -166,7 +164,7 @@ export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
           )}
 
           {/* Collapse arrow */}
-          {brief && !isNoKey && (
+          {brief && (
             <span
               style={{
                 fontSize: '10px',
@@ -240,17 +238,16 @@ export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
               <p
                 style={{
                   margin: '10px 0 8px',
-                  color: isNoKey ? '#475569' : '#cbd5e1',
+                  color: '#cbd5e1',
                   lineHeight: 1.65,
-                  fontStyle: isNoKey ? 'italic' : 'normal',
-                  whiteSpace: 'pre-wrap',
+                                    whiteSpace: 'pre-wrap',
                 }}
               >
                 {brief}
               </p>
 
               {/* Footer: timestamp + optional refresh */}
-              {!isNoKey && generatedAt && (
+              {generatedAt && (
                 <div
                   style={{
                     display: 'flex',

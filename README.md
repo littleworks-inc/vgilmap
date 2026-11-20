@@ -28,7 +28,7 @@ VigilMap aggregates **8 real-time data sources** into a single dark-mode globe. 
 
 - **Interactive globe** — MapLibre GL, CartoDB Dark Matter tiles, cluster expansion on zoom
 - **Anomaly detection** — Welford's online algorithm finds statistically unusual event concentrations, no ML needed
-- **AI World Brief** — OpenRouter Llama summarizes the top 8 events into a concise intelligence brief
+- **AI World Brief** — NVIDIA NIM (Gemma 4 / MiniMax / Nemotron cascade, via a server-side proxy) summarizes the top 8 events into a concise intelligence brief
 - **Live ticker** — scrolling event feed at the bottom of the map
 - **Mobile responsive** — full-screen map with swipeable bottom drawer on phones
 - **Public REST API** — `/api/v1/events` and `/api/v1/summary`, free to use
@@ -65,7 +65,7 @@ Open [localhost:5173](http://localhost:5173).
 
 | Variable | Required | Where to get it |
 |----------|----------|-----------------|
-| `VITE_OPENROUTER_API_KEY` | Optional | [openrouter.ai/keys](https://openrouter.ai/keys) — free tier available |
+| `NVIDIA_API_KEY` | Optional | [build.nvidia.com](https://build.nvidia.com) — server-side only (Vercel env var), powers `/api/brief` |
 | `VITE_NASA_FIRMS_API_KEY` | Optional | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov/api/map_key/) — free |
 
 Without these keys the app still works — AI briefs show an auto-generated fallback, NASA uses the public `DEMO_KEY` (rate-limited).
@@ -104,7 +104,7 @@ src/
 │   ├── MobileDrawer.tsx         # Swipeable bottom sheet (mobile)
 │   ├── LiveTicker.tsx           # Scrolling event ticker
 │   ├── AnimatedCount.tsx        # Count-up animation on data load
-│   ├── IntelBrief.tsx           # OpenRouter AI world brief
+│   ├── IntelBrief.tsx           # AI world brief (calls /api/brief)
 │   ├── AnomalyPanel.tsx         # Anomaly signal cards
 │   └── DomainFilter.tsx         # Domain toggle bar
 ├── map/
@@ -242,7 +242,7 @@ The app handles adapter failures gracefully — if one throws, the rest keep run
 | Map tiles | CartoDB Dark Matter (free, no key) |
 | Fonts | Protomaps Noto Sans PBF |
 | Deployment | Vercel edge functions + CDN |
-| AI | OpenRouter — Llama 3.1 8B free tier |
+| AI | NVIDIA NIM (OpenAI-compatible API) via edge proxy |
 | Anomaly | Welford's algorithm, pure TypeScript |
 
 ---
