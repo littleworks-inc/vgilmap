@@ -8,6 +8,7 @@
 
 import type { Domain } from '../types';
 import { DOMAIN_COLORS, DOMAIN_ICONS, TIME_WINDOWS } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { TimeWindowId } from '../types';
 
 // ─── Domain display config ─────────────────────────────────
@@ -56,6 +57,9 @@ export function DomainFilter({
   timeWindow,
   onTimeWindow,
 }: DomainFilterProps) {
+  // With 9 domains the chips don't fit in one row on a laptop: wrap them there (so none is hidden),
+  // and keep the single scrollable row on phones where vertical space is scarce.
+  const isMobile = useIsMobile();
   const domainsWithData = VISIBLE_DOMAINS.filter(d => (counts[d] ?? 0) > 0);
   const allActive = domainsWithData.every(d => activeDomains.has(d));
   const noneActive = domainsWithData.every(d => !activeDomains.has(d));
@@ -66,8 +70,9 @@ export function DomainFilter({
         display: 'flex',
         alignItems: 'center',
         gap: '6px',
-        flexWrap: 'nowrap',
-        overflowX: 'auto' as const,
+        flexWrap: isMobile ? 'nowrap' : 'wrap',
+        rowGap: '6px',
+        overflowX: isMobile ? ('auto' as const) : ('visible' as const),
         WebkitOverflowScrolling: 'touch' as const,
         padding: '8px 12px',
         background: 'rgba(10,15,30,0.88)',
@@ -167,6 +172,9 @@ export function DomainFilter({
         style={{
           marginLeft: 'auto', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '2px',
           background: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', padding: '2px',
+          // The chips row scrolls sideways when there are many domains; keep this control pinned
+          // to the right edge (with a soft fade) instead of letting it scroll out of view.
+          ...(isMobile ? { position: 'sticky' as const, right: 0, zIndex: 2, boxShadow: '-10px 0 8px 2px rgba(10,15,30,0.95)' } : {}),
         }}
       >
         <span style={{ fontSize: '10px', color: '#8a99ae', padding: '0 6px 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Last</span>

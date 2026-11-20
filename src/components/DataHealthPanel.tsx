@@ -27,7 +27,7 @@ export function DataHealthPanel({ sources }: { sources: SourceHealth[] }) {
   const { live, total, worst } = summarize(sources);
   const allLoading = sources.every(s => s.status === 'loading');
   const badgeColor = allLoading ? STATUS_META.loading.color : STATUS_META[worst === 'loading' ? 'ok' : worst].color;
-  const attention = sources.filter(s => s.status === 'error' || s.status === 'stale' || s.status === 'empty' || s.status === 'degraded').length;
+  const attention = sources.filter(s => !s.optional && (s.status === 'error' || s.status === 'stale' || s.status === 'empty' || s.status === 'degraded')).length;
 
   return (
     <div style={{ borderBottom: '1px solid #1e293b', background: '#0a0f1e' }}>
@@ -61,12 +61,16 @@ export function DataHealthPanel({ sources }: { sources: SourceHealth[] }) {
       {expanded && (
         <div style={{ padding: '0 12px 8px' }}>
           {sources.map(s => {
-            const meta = STATUS_META[s.status];
+            // An optional source that's down is a non-event: muted colour, "Unavailable", and a note.
+            const quiet = s.optional && s.status === 'error';
+            const meta = quiet
+              ? { label: 'Unavailable', color: '#94a3b8', hint: 'Optional extra source; nothing depends on it' }
+              : STATUS_META[s.status];
             const elapsed = s.status === 'loading' && s.startedAt ? Math.max(0, Math.round((now - s.startedAt) / 1000)) : 0;
             const slow = s.status === 'loading' && elapsed >= SLOW_AFTER_S;
             const detail =
               s.status === 'loading' ? (slow ? `still waiting after ${elapsed}s — this source is slow` : null)
-              : s.status === 'error' ? s.error
+              : s.status === 'error' ? (quiet ? `${s.error} · optional extra, nothing depends on it` : s.error)
               : s.status === 'stale' && s.newestAt ? `newest event is ${ago(now - new Date(s.newestAt).getTime())}`
               : s.status === 'empty' ? 'responded with no events'
               : s.warnings.length > 0 ? s.warnings.join(' · ')

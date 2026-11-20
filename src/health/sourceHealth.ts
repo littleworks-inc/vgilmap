@@ -28,6 +28,7 @@ export interface SourceHealth {
   durationMs?: number;
   checkedAt?: number;     // epoch ms of the last completed attempt
   startedAt?: number;     // epoch ms when the first fetch began (used to show how long it's been loading)
+  optional?: boolean;     // an extra source: its failure is shown, but never raised as an alarm
 }
 
 export const STATUS_META: Record<HealthStatus, { label: string; color: string; hint: string }> = {
@@ -66,6 +67,8 @@ const SEVERITY: Record<HealthStatus, number> = {
 export function summarize(sources: SourceHealth[]): { live: number; total: number; worst: HealthStatus } {
   let worst: HealthStatus = 'ok';
   let live = 0;
+  // Optional sources are listed in the panel but don't count toward the headline numbers or colour.
+  sources = sources.filter(s => !s.optional);
   for (const s of sources) {
     if (s.status === 'ok' || s.status === 'degraded') live++;
     if (SEVERITY[s.status] > SEVERITY[worst]) worst = s.status;

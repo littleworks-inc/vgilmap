@@ -280,6 +280,12 @@ export function Sidebar({
         </a>
       </div>
 
+      {/*
+        The panels above the list live in their own height-capped scroll region. Without the cap,
+        opening a tall panel (Data Health has 11 rows) used up the whole sidebar and left the event
+        list zero pixels high, so "Show all N events" appeared to do nothing.
+      */}
+      <div style={{ flexShrink: 0, maxHeight: '38vh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
       {/* ── AI Intel Brief ───────────────────────────────────── */}
       <IntelBrief events={events} anomalySignals={anomalySignals} />
 
@@ -291,6 +297,7 @@ export function Sidebar({
 
       {/* ── Data Health: which sources are live / stale / down ── */}
       <DataHealthPanel sources={sourceHealth} />
+      </div>
 
 
       {/* ── Status bar ──────────────────────────────────────── */}
@@ -428,7 +435,7 @@ export function Sidebar({
       </div>
 
       {/* ── Event list ─────────────────────────────────────── */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, minHeight: '140px', overflowY: 'auto' }}>
         {loading && recent.length === 0 && (
           <div
             style={{

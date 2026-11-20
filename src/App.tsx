@@ -77,6 +77,8 @@ const ADAPTERS: Array<{
   label: string;
   domain: Domain;
   staleAfterHours: number;
+  /** An extra on top of other sources: if it fails it's shown in Data Health, but raises no banner. */
+  optional?: boolean;
   fetch: () => Promise<VigilEvent[]>;
 }> = [
   { key: 'usgs-day',   label: 'USGS 24h',        domain: 'disaster', staleAfterHours: 3,   fetch: fetchUSGSEarthquakes },
@@ -84,7 +86,7 @@ const ADAPTERS: Array<{
   { key: 'nasa-firms', label: 'NASA FIRMS',        domain: 'climate',  staleAfterHours: 24,  fetch: fetchNASAFirms },
   { key: 'noaa',       label: 'NOAA Alerts',       domain: 'climate',  staleAfterHours: 12,  fetch: fetchNOAAAlerts },
   { key: 'conflict-rss', label: 'Conflict News (RSS)', domain: 'conflict', staleAfterHours: 12, fetch: fetchConflictNews },
-  { key: 'gdelt',      label: 'GDELT Conflict',    domain: 'conflict', staleAfterHours: 24,  fetch: fetchGDELT },
+  { key: 'gdelt',      label: 'GDELT Conflict',    domain: 'conflict', staleAfterHours: 24,  optional: true, fetch: fetchGDELT },
   { key: 'who',        label: 'WHO Outbreak News', domain: 'health',   staleAfterHours: 720, fetch: fetchWHOOutbreaks },
   { key: 'reliefweb',  label: 'ReliefWeb Disasters', domain: 'disaster', staleAfterHours: 1080, fetch: fetchReliefWeb },
   { key: 'economic-news', label: 'Economic & Labor News', domain: 'economic', staleAfterHours: 24, fetch: fetchEconomicNews },
@@ -265,7 +267,7 @@ export default function App() {
   const [timeWindow, setTimeWindow] = useState<TimeWindowId>(DEFAULT_TIME_WINDOW);
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>(() =>
     ADAPTERS.map(a => ({
-      key: a.key, label: a.label, domain: a.domain, status: 'loading' as const, count: 0, warnings: [], startedAt: Date.now(),
+      key: a.key, label: a.label, domain: a.domain, status: 'loading' as const, count: 0, warnings: [], startedAt: Date.now(), optional: a.optional,
     })),
   );
   const lastOkRef = useRef<Map<string, number>>(new Map());
@@ -304,7 +306,7 @@ export default function App() {
           patch = { status, newestAt, count: events.length, warnings, error: undefined };
         } catch (reason) {
           console.error(`[${adapter.label}] failed:`, reason);
-          errs.push(adapter.label);
+          if (!adapter.optional) errs.push(adapter.label); // optional extras fail quietly
           patch = {
             status: 'error', count: 0, newestAt: undefined, warnings: [],
             error: reason instanceof Error ? reason.message : String(reason),
