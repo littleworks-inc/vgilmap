@@ -9,6 +9,8 @@ import { DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
 import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
+import { DataHealthPanel } from './DataHealthPanel';
+import type { SourceHealth } from '../health/sourceHealth';
 import type { AnomalySignal } from '../intelligence/anomaly';
 import type { CyberFocus } from '../types';
 interface MobileDrawerProps {
@@ -23,6 +25,7 @@ interface MobileDrawerProps {
   onSelectSignal: (signal: AnomalySignal) => void;
   cyberFocus: CyberFocus | null;
   onCyberFocus: (focus: CyberFocus | null) => void;
+  sourceHealth: SourceHealth[];
 }
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -36,7 +39,7 @@ function timeAgo(iso: string): string {
 const PEEK_H = 110;  // px visible when collapsed
 export function MobileDrawer({
   events, selectedId, loading, error, lastUpdated,
-  onSelectEvent, onRefresh, anomalySignals, onSelectSignal, cyberFocus, onCyberFocus,
+  onSelectEvent, onRefresh, anomalySignals, onSelectSignal, cyberFocus, onCyberFocus, sourceHealth,
 }: MobileDrawerProps) {
   const [expanded, setExpanded] = useState(false);
   const startY = useRef<number | null>(null);
@@ -155,6 +158,8 @@ export function MobileDrawer({
               if (f) setExpanded(false); // collapse the drawer so the filtered map is visible
             }}
           />
+          {/* Data Health */}
+          <DataHealthPanel sources={sourceHealth} />
           {/* Refresh row */}
           <div style={{
             padding: '8px 16px',

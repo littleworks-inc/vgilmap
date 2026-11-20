@@ -6,6 +6,7 @@
  * tags (sector + threat actor) so the sidebar, popup and API can surface it.
  */
 import type { VigilEvent, Severity } from '../types';
+import { addWarning } from './source-warnings';
 
 // ── Country centroids (ISO 3166-1 alpha-2) ─────────────────
 
@@ -187,15 +188,18 @@ function normalizeKev(data: unknown): VigilEvent[] {
 // ── Main export ───────────────────────────────────────────
 
 export async function fetchCyber(): Promise<VigilEvent[]> {
-  try {
-    const res = await fetch('/api/cyber');
-    if (!res.ok) throw new Error(`/api/cyber ${res.status}`);
-    const { victims, kev } = await res.json();
-    return [...normalizeVictims(victims), ...normalizeKev(kev)].sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-  } catch (err) {
-    console.warn('[Cyber]', err);
-    return [];
-  }
+  const res = await fetch('/api/cyber');
+  if (!res.ok) throw new Error(`/api/cyber ${res.status}`);
+  const { victims, kev } = await res.json();
+
+  // The proxy returns null for a feed that failed. Both null = a real failure; one null = partial.
+  const victimsOk = Array.isArray(victims);
+  const kevOk = Array.isArray(kev);
+  if (!victimsOk && !kevOk) throw new Error('ransomware.live and CISA KEV both unavailable');
+  if (!victimsOk) addWarning('cyber', 'ransomware.live unavailable (showing CISA KEV only)');
+  if (!kevOk) addWarning('cyber', 'CISA KEV unavailable (showing ransomware claims only)');
+
+  return [...normalizeVictims(victims), ...normalizeKev(kev)].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
 }

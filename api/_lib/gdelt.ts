@@ -37,15 +37,26 @@ const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 let queue: Promise<unknown> = Promise.resolve();
 let lastStart = 0;
 
-function schedule<T>(fn: () => Promise<T>): Promise<T> {
+/**
+ * Run `fn` in turn. If our turn hasn't come (or the spacing wait hasn't finished) by `giveUpAt`,
+ * resolve with `onGiveUp` instead and never run `fn`. Without this, requests stack up behind each
+ * other on a busy instance and blow past the edge runtime's ~25 s time-to-first-byte limit.
+ */
+function schedule<T>(fn: () => Promise<T>, giveUpAt: number, onGiveUp: T): Promise<T> {
+  let cancelled = false;
   const run = queue.then(async () => {
+    if (cancelled) return onGiveUp;
     const wait = lastStart + MIN_GAP_MS - Date.now();
     if (wait > 0) await sleep(wait);
+    if (cancelled) return onGiveUp;
     lastStart = Date.now();
     return fn();
   });
   queue = run.catch(() => undefined);
-  return run;
+  const timeout = new Promise<T>(resolve =>
+    setTimeout(() => { cancelled = true; resolve(onGiveUp); }, Math.max(0, giveUpAt - Date.now())),
+  );
+  return Promise.race([run, timeout]);
 }
 
 // ── One request ────────────────────────────────────────────
@@ -126,11 +137,16 @@ export async function serveGdelt(name: string, queries: string[]): Promise<Respo
 
       // Go through the spacing queue; the time budget is re-checked AFTER any wait in the queue,
       // since waiting for our turn eats into the ~25 s the edge runtime gives us.
-      const out = await schedule<Outcome>(async () => {
-        const remaining = BUDGET_MS - (Date.now() - started);
-        if (remaining < 3_000) return { kind: 'error', message: 'out of time budget' };
-        return requestOnce(query, Math.min(MAX_REQUEST_MS, remaining));
-      });
+      const giveUpAt = started + BUDGET_MS - 3_000; // keep ~3 s to build the fallback response
+      const out = await schedule<Outcome>(
+        async () => {
+          const remaining = BUDGET_MS - (Date.now() - started);
+          if (remaining < 3_000) return { kind: 'error', message: 'out of time budget' };
+          return requestOnce(query, Math.min(MAX_REQUEST_MS, remaining));
+        },
+        giveUpAt,
+        { kind: 'error', message: 'queue wait exceeded time budget' },
+      );
       if (out.kind === 'ok') {
         await saveGood(name, out.body);
         return new Response(out.body, {

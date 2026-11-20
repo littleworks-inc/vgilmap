@@ -8,7 +8,8 @@
  * Results merge and deduplicate. Either source failing is silent.
  */
 import type { VigilEvent, Severity } from '../types';
-import { gdeltFetch } from './gdelt-queue';
+import { gdeltFetch, noteIfStale } from './gdelt-queue';
+import { addWarning } from './source-warnings';
 // ─── Shared helpers ────────────────────────────────────────
 function hashId(s: string): string {
   let h = 0;
@@ -70,6 +71,7 @@ interface GDELTArticle {
 async function fromGDELT(): Promise<VigilEvent[]> {
   const res = await gdeltFetch('/api/gdelt');
   if (!res.ok) throw new Error(`gdelt proxy ${res.status}`);
+  noteIfStale('gdelt', res);
   const json = await res.json();
   const events: VigilEvent[] = [];
   for (const a of (json.articles ?? []) as GDELTArticle[]) {
@@ -141,6 +143,12 @@ export async function fetchGDELT(): Promise<VigilEvent[]> {
   } else {
     console.warn('[RSS proxy] failed:', rssResult.reason?.message);
   }
+  // Two independent feeds: both down is a failure, one down is a degradation.
+  if (gdeltResult.status === 'rejected' && rssResult.status === 'rejected') {
+    throw new Error('GDELT and news RSS both unavailable');
+  }
+  if (gdeltResult.status === 'rejected') addWarning('gdelt', 'GDELT unavailable (showing news RSS only)');
+  if (rssResult.status === 'rejected') addWarning('gdelt', 'News RSS unavailable (showing GDELT only)');
   // Deduplicate
   const seen = new Set<string>();
   return all.filter(e => {

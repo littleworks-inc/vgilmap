@@ -108,6 +108,9 @@ export async function fetchReliefWeb(): Promise<VigilEvent[]> {
     });
     if (!res.ok) throw new Error(`ReliefWeb proxy ${res.status}`);
     const json = await res.json();
+    // The proxy reports upstream failures as a 200 with an `error` field (and empty data).
+    // Treat that as a failure, not as "no events", so the Data Health panel can say it's down.
+    if (json.error) throw new Error(String(json.error));
     const events: VigilEvent[] = [];
 
     for (const report of (json.data ?? []) as RWReport[]) {
@@ -152,6 +155,6 @@ export async function fetchReliefWeb(): Promise<VigilEvent[]> {
     return events;
   } catch (err) {
     console.warn('[ReliefWeb] failed:', err);
-    return [];
+    throw err; // surface it: the Data Health panel must tell "down" from "quiet"
   }
 }

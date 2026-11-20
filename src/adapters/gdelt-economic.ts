@@ -4,7 +4,7 @@
  * Reuses /api/gdelt-economic edge proxy.
  */
 import type { VigilEvent, Severity } from '../types';
-import { gdeltFetch } from './gdelt-queue';
+import { gdeltFetch, noteIfStale } from './gdelt-queue';
 
 const ECON_KEYWORDS =
   /sanction|inflation|recession|default|debt crisis|financial crisis|bank run|currency crisis|unemployment surge|mass layoff|strike|worker protest|supply chain/i;
@@ -80,6 +80,7 @@ export async function fetchGDELTEconomic(): Promise<VigilEvent[]> {
   try {
     const res = await gdeltFetch('/api/gdelt-economic');
     if (!res.ok) throw new Error(`gdelt-economic proxy ${res.status}`);
+    noteIfStale('gdelt-econ', res);
     const json = await res.json();
     const events: VigilEvent[] = [];
     const seen = new Set<string>();
@@ -120,6 +121,6 @@ export async function fetchGDELTEconomic(): Promise<VigilEvent[]> {
     return events;
   } catch (err) {
     console.warn('[GDELT Economic] failed:', err);
-    return [];
+    throw err; // surface it: the Data Health panel must tell "down" from "quiet"
   }
 }

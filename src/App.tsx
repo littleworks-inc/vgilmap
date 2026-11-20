@@ -31,6 +31,9 @@ import { fetchCyber } from './adapters/cyber';
 import type { CyberFocus, Domain, TimeWindowId, VigilEvent } from './types';
 import { DOMAIN_ICONS, DOMAIN_COLORS, DEFAULT_TIME_WINDOW, isMappable, matchesCyberFocus, timeWindowMs } from './types';
 import { detectAnomalies } from './intelligence/anomaly';
+import { classify } from './health/sourceHealth';
+import type { SourceHealth } from './health/sourceHealth';
+import { clearWarnings, getWarnings } from './adapters/source-warnings';
 import type { AnomalySignal } from './intelligence/anomaly';
 
 // ─── Constants ─────────────────────────────────────────────
@@ -67,21 +70,25 @@ function pushEventToURL(id: string | undefined) {
 
 // ─── Adapter registry ──────────────────────────────────────
 
+// `staleAfterHours`: if the newest event is older than this, the source is flagged "stale"
+// in the Data Health panel (it responds, but isn't producing current data).
 const ADAPTERS: Array<{
   key: string;
   label: string;
+  domain: Domain;
+  staleAfterHours: number;
   fetch: () => Promise<VigilEvent[]>;
 }> = [
-  { key: 'usgs-day',   label: 'USGS 24h',        fetch: fetchUSGSEarthquakes },
-  { key: 'usgs-week',  label: 'USGS Significant', fetch: fetchUSGSSignificantWeek },
-  { key: 'nasa-firms', label: 'NASA FIRMS',        fetch: fetchNASAFirms },
-  { key: 'noaa',       label: 'NOAA Alerts',       fetch: fetchNOAAAlerts },
-  { key: 'gdelt',      label: 'GDELT Conflict',     fetch: fetchGDELT },
-  { key: 'who',        label: 'WHO Outbreaks',   fetch: fetchWHOOutbreaks },
-  { key: 'reliefweb',  label: 'ReliefWeb',        fetch: fetchReliefWeb },
-  { key: 'gdelt-econ', label: 'GDELT Economic',   fetch: fetchGDELTEconomic },
-  { key: 'science',    label: 'Science',           fetch: fetchScience },
-  { key: 'cyber',      label: 'Cyber',             fetch: fetchCyber },
+  { key: 'usgs-day',   label: 'USGS 24h',        domain: 'disaster', staleAfterHours: 3,   fetch: fetchUSGSEarthquakes },
+  { key: 'usgs-week',  label: 'USGS Significant', domain: 'disaster', staleAfterHours: 168, fetch: fetchUSGSSignificantWeek },
+  { key: 'nasa-firms', label: 'NASA FIRMS',        domain: 'climate',  staleAfterHours: 24,  fetch: fetchNASAFirms },
+  { key: 'noaa',       label: 'NOAA Alerts',       domain: 'climate',  staleAfterHours: 12,  fetch: fetchNOAAAlerts },
+  { key: 'gdelt',      label: 'GDELT Conflict',    domain: 'conflict', staleAfterHours: 24,  fetch: fetchGDELT },
+  { key: 'who',        label: 'WHO Outbreaks',     domain: 'health',   staleAfterHours: 720, fetch: fetchWHOOutbreaks },
+  { key: 'reliefweb',  label: 'ReliefWeb',         domain: 'economic', staleAfterHours: 168, fetch: fetchReliefWeb },
+  { key: 'gdelt-econ', label: 'GDELT Economic',    domain: 'economic', staleAfterHours: 48,  fetch: fetchGDELTEconomic },
+  { key: 'science',    label: 'NASA Space Weather', domain: 'science', staleAfterHours: 168, fetch: fetchScience },
+  { key: 'cyber',      label: 'Cyber',             domain: 'cyber',    staleAfterHours: 72,  fetch: fetchCyber },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -255,6 +262,12 @@ export default function App() {
   const loadRunRef        = useRef(0);
   const [cyberFocus, setCyberFocus] = useState<CyberFocus | null>(null);
   const [timeWindow, setTimeWindow] = useState<TimeWindowId>(DEFAULT_TIME_WINDOW);
+  const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>(() =>
+    ADAPTERS.map(a => ({
+      key: a.key, label: a.label, domain: a.domain, status: 'loading' as const, count: 0, warnings: [],
+    })),
+  );
+  const lastOkRef = useRef<Map<string, number>>(new Map());
   const isMobile = useIsMobile();
 
   // ── Fetch all adapters in parallel ──────────────────────
@@ -277,11 +290,28 @@ export default function App() {
 
     await Promise.allSettled(
       ADAPTERS.map(async (adapter, i) => {
+        const startedAt = performance.now();
+        clearWarnings(adapter.key);
+        let patch: Partial<SourceHealth>;
         try {
-          bySource[i] = await adapter.fetch();
+          const events = await adapter.fetch();
+          bySource[i] = events;
+          const now = Date.now();
+          const warnings = getWarnings(adapter.key);
+          const { status, newestAt } = classify(events, adapter.staleAfterHours, warnings, now);
+          if (events.length > 0) lastOkRef.current.set(adapter.key, now);
+          patch = { status, newestAt, count: events.length, warnings, error: undefined };
         } catch (reason) {
           console.error(`[${adapter.label}] failed:`, reason);
           errs.push(adapter.label);
+          patch = {
+            status: 'error', count: 0, newestAt: undefined, warnings: [],
+            error: reason instanceof Error ? reason.message : String(reason),
+          };
+        }
+        if (runId === loadRunRef.current) {
+          const done = { ...patch, durationMs: Math.round(performance.now() - startedAt), checkedAt: Date.now(), lastOkAt: lastOkRef.current.get(adapter.key) };
+          setSourceHealth(prev => prev.map(h => (h.key === adapter.key ? { ...h, ...done } : h)));
         }
         if (runId !== loadRunRef.current) return; // a newer refresh superseded this one
         if (errs.length) setErrors([...errs]);
@@ -414,6 +444,7 @@ export default function App() {
           cyberFocus={cyberFocus}
           onCyberFocus={handleCyberFocus}
           windowLabel={timeWindow}
+          sourceHealth={sourceHealth}
         />
       )}
 
@@ -491,7 +522,7 @@ export default function App() {
               fontSize: '11px', color: '#fca5a5',
               zIndex: 5, pointerEvents: 'none',
             }}>
-              ⚠ {errors.join(', ')} unavailable
+              ⚠ {errors.length <= 2 ? `${errors.join(', ')} unavailable` : `${errors.length} sources unavailable`} · see Data Health
             </div>
           )}
         </div>
@@ -511,6 +542,7 @@ export default function App() {
           onSelectSignal={handleSelectSignal}
           cyberFocus={cyberFocus}
           onCyberFocus={handleCyberFocus}
+          sourceHealth={sourceHealth}
         />
       )}
     </div>

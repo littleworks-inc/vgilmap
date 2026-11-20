@@ -92,7 +92,7 @@ export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
     }
     return events;
   } catch (err) {
-    console.warn('[WHO] unavailable:', err);
-    return [];
+    console.warn('[WHO] failed:', err);
+    throw err; // surface it: the Data Health panel must tell "down" from "quiet"
   }
 }

@@ -3,6 +3,7 @@
  * Normalizes NASA DONKI Solar Flares, Geomagnetic Storms, and NeoWs Asteroids.
  */
 import type { VigilEvent, Severity } from '../types';
+import { addWarning } from './source-warnings';
 
 // ── Solar Flare normalizer ─────────────────────────────────
 
@@ -149,22 +150,26 @@ function normalizeNeo(data: unknown): VigilEvent[] {
 // ── Main export ───────────────────────────────────────────
 
 export async function fetchScience(): Promise<VigilEvent[]> {
-  try {
-    const res = await fetch('/api/science');
-    if (!res.ok) throw new Error(`/api/science ${res.status}`);
-    const { flr, gst, neo } = await res.json();
+  const res = await fetch('/api/science');
+  if (!res.ok) throw new Error(`/api/science ${res.status}`);
+  const { flr, gst, neo } = await res.json();
 
-    const all: VigilEvent[] = [
-      ...normalizeFLR(flr),
-      ...normalizeGST(gst),
-      ...normalizeNeo(neo),
-    ];
+  // The proxy returns null for an upstream NASA endpoint that failed.
+  const failed = [
+    flr == null && 'solar flares',
+    gst == null && 'geomagnetic storms',
+    neo == null && 'asteroids',
+  ].filter(Boolean) as string[];
+  if (failed.length === 3) throw new Error('all NASA feeds unavailable (check NASA_API_KEY / rate limit)');
+  if (failed.length > 0) addWarning('science', `NASA feed unavailable: ${failed.join(', ')}`);
 
-    return all.sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-  } catch (err) {
-    console.warn('[Science]', err);
-    return [];
-  }
+  const all: VigilEvent[] = [
+    ...normalizeFLR(flr),
+    ...normalizeGST(gst),
+    ...normalizeNeo(neo),
+  ];
+
+  return all.sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
 }

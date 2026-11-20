@@ -6,7 +6,22 @@
  * A response that came from the CDN cache carries an `Age` header and never reached GDELT,
  * so when the previous response was cached the next call goes immediately.
  */
+import { addWarning } from './source-warnings';
+
 const GAP_MS = 6_000;
+
+/**
+ * Our GDELT proxies fall back to the last good result when GDELT is down and say so in the
+ * `X-Gdelt-Source: stale` header. Report that to the Data Health panel, otherwise cached data
+ * would be shown as plainly "live".
+ */
+export function noteIfStale(sourceKey: string, res: Response): void {
+  if (res.headers.get('x-gdelt-source') !== 'stale') return;
+  const secs = Number(res.headers.get('x-gdelt-age-seconds'));
+  const mins = Math.round(secs / 60);
+  const age = Number.isFinite(secs) && secs > 0 ? (mins < 1 ? 'under a minute' : mins < 120 ? `${mins} min` : `${Math.round(mins / 60)} h`) : 'earlier';
+  addWarning(sourceKey, `GDELT unavailable — showing cached data from ${age} ago`);
+}
 
 let tail: Promise<unknown> = Promise.resolve();
 let lastWasLive = false;

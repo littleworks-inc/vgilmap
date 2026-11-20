@@ -11,6 +11,8 @@ import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
 import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
+import { DataHealthPanel } from './DataHealthPanel';
+import type { SourceHealth } from '../health/sourceHealth';
 import type { AnomalySignal } from '../intelligence/anomaly';
 import type { CyberFocus } from '../types';
 
@@ -27,6 +29,7 @@ interface SidebarProps {
   cyberFocus: CyberFocus | null;
   onCyberFocus: (focus: CyberFocus | null) => void;
   windowLabel: string;
+  sourceHealth: SourceHealth[];
 }
 
 /** Earthquake: coloured M-badge. Other domains: coloured dot with domain icon. */
@@ -190,6 +193,7 @@ export function Sidebar({
   cyberFocus,
   onCyberFocus,
   windowLabel,
+  sourceHealth,
 }: SidebarProps) {
   const [showAll, setShowAll]   = useState(false);
   const [query, setQuery]       = useState('');
@@ -284,6 +288,9 @@ export function Sidebar({
 
       {/* ── Cyber Trends (hidden until Redis history exists) ─── */}
       <CyberTrendsPanel focus={cyberFocus} onFocus={onCyberFocus} />
+
+      {/* ── Data Health: which sources are live / stale / down ── */}
+      <DataHealthPanel sources={sourceHealth} />
 
 
       {/* ── Status bar ──────────────────────────────────────── */}
