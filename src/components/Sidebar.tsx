@@ -440,7 +440,7 @@ export function Sidebar({
         opening a tall panel (Data Health has 11 rows) used up the whole sidebar and left the event
         list zero pixels high, so "Show all N events" appeared to do nothing.
       */}
-      <div style={{ flexShrink: 0, maxHeight: '38vh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
+      <div style={{ flexShrink: 0, maxHeight: '28vh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
       {/* ── AI Intel Brief ───────────────────────────────────── */}
       <IntelBrief events={events} anomalySignals={anomalySignals} />
 
