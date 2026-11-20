@@ -325,6 +325,12 @@ export function Globe({ events, onEventClick }: GlobeProps) {
       }
     });
 
+    // 3D globe projection. Re-applied on every style load so it survives the fallback
+    // style swap above (setStyle resets the projection to the style's own).
+    map.on('style.load', () => {
+      map.setProjection({ type: 'globe' });
+    });
+
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
 
@@ -425,7 +431,10 @@ export function Globe({ events, onEventClick }: GlobeProps) {
           'text-field': ['get', 'point_count_abbreviated'],
           'text-font': ['Noto Sans Regular'], // exists on both CARTO's and the fallback glyph servers
           'text-size': 12,
-          'text-allow-overlap': true,
+          // On the globe, symbols are only culled when they're beyond the horizon if overlap
+          // checking is on; with allow-overlap the far-side counts floated in space.
+          'text-allow-overlap': false,
+          'text-ignore-placement': true, // but never let these counts bump other labels
         },
         paint: {
           'text-color': '#ffffff',
