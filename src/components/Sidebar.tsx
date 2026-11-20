@@ -9,6 +9,10 @@ import { useState, useRef, useEffect } from 'react';
 import type { VigilEvent } from '../types';
 import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS, isMappable, NO_MAP_LOCATION } from '../types';
 import { SourceLink } from './SourceLink';
+import { ListFilterBar } from './ListFilterBar';
+import { KevGroupHeader } from './KevGroupHeader';
+import { buildListRows } from '../utils/listRows';
+import type { ListFilter } from '../utils/listRows';
 import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
@@ -194,12 +198,6 @@ function ShareButton({ eventId }: { eventId: string }) {
   );
 }
 
-type ListFilter = 'all' | 'map' | 'nomap';
-type ListRow = { kind: 'event'; ev: VigilEvent } | { kind: 'kev'; events: VigilEvent[] };
-
-/** An entry from CISA's KEV catalogue (not a news story about an exploited bug). */
-const isKevEntry = (ev: VigilEvent) => ev.category === 'vulnerability' && ev.source === 'CISA KEV';
-
 export function Sidebar({
   events,
   selectedId,
@@ -242,30 +240,10 @@ export function Sidebar({
       })
     : events;
   // When searching show all matches; otherwise respect showAll/INITIAL_COUNT
-  // "On map" / "No location" filter, with counts that follow the search box.
+  // Filter + KEV grouping live in one shared helper (the mobile drawer uses it too). The counts
+  // follow the search box.
   const base = trimmed ? matchedEvents : events;
-  const onMapCount = base.filter(isMappable).length;
-  const listCounts = { all: base.length, map: onMapCount, nomap: base.length - onMapCount };
-  const filtered = listFilter === 'map' ? base.filter(isMappable)
-    : listFilter === 'nomap' ? base.filter(ev => !isMappable(ev))
-    : base;
-
-  // Group the CISA KEV catalogue entries into one collapsible row: there can be dozens, they can
-  // never be plotted, and as separate rows they flood the list. A lone entry stays a normal row.
-  const rows: ListRow[] = [];
-  let kevGroup: Extract<ListRow, { kind: 'kev' }> | null = null;
-  for (const ev of trimmed ? filtered.slice(0, 200) : filtered) {
-    if (isKevEntry(ev)) {
-      if (!kevGroup) { kevGroup = { kind: 'kev', events: [] }; rows.push(kevGroup); }
-      kevGroup.events.push(ev);
-    } else {
-      rows.push({ kind: 'event', ev });
-    }
-  }
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    if (r.kind === 'kev' && r.events.length === 1) rows[i] = { kind: 'event', ev: r.events[0] };
-  }
+  const { counts: listCounts, filtered, rows } = buildListRows(base, listFilter, trimmed ? 200 : undefined);
   const recent = trimmed ? rows : (showAll ? rows : rows.slice(0, INITIAL_COUNT));
   // Reset showAll when query changes
   const prevQuery = useRef('');
@@ -387,27 +365,12 @@ export function Sidebar({
     const open = kevOpen || list.some(e => e.id === selectedId); // a selected entry must be visible
     return (
       <div key="kev-group">
-        <button
-          onClick={() => setKevOpen(o => !o)}
-          aria-expanded={open}
-          title="CISA's Known Exploited Vulnerabilities catalogue. These are software flaws, so they have no map location."
-          style={{
-            width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', gap: '10px', alignItems: 'center',
-            padding: '10px 16px', background: '#0f172a', border: 'none', borderLeft: '3px solid #84cc16',
-            borderBottom: '1px solid #1e293b',
-          }}
-        >
-          <span style={{ fontSize: '16px', flexShrink: 0 }}>{DOMAIN_ICONS.cyber}</span>
-          <span style={{ minWidth: 0, flex: 1 }}>
-            <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>
-              Exploited vulnerabilities · {list.length}
-            </span>
-            <span style={{ display: 'block', fontSize: '11px', color: '#8a99ae', marginTop: '2px' }}>
-              CISA KEV · newest {timeAgo(list[0].timestamp)} · {NO_MAP_LOCATION}
-            </span>
-          </span>
-          <span aria-hidden style={{ fontSize: '11px', color: '#7d8ba1' }}>{open ? '▲' : '▼'}</span>
-        </button>
+        <KevGroupHeader
+          count={list.length}
+          newestAgo={timeAgo(list[0].timestamp)}
+          open={open}
+          onToggle={() => setKevOpen(o => !o)}
+        />
         {open && list.map(renderEventRow)}
       </div>
     );
@@ -617,31 +580,7 @@ export function Sidebar({
             </button>
           )}
         </div>
-        {/* Filter by whether an event can be shown on the map */}
-        <div role="group" aria-label="Filter the list by map location" style={{ display: 'flex', gap: '4px', padding: '0 12px 8px' }}>
-          {([
-            ['all', 'All', listCounts.all],
-            ['map', 'On map', listCounts.map],
-            ['nomap', 'No location', listCounts.nomap],
-          ] as Array<[ListFilter, string, number]>).map(([id, label, n]) => {
-            const on = listFilter === id;
-            return (
-              <button
-                key={id}
-                onClick={() => { setListFilter(id); setShowAll(false); }}
-                aria-pressed={on}
-                style={{
-                  flex: 1, fontSize: '11px', fontWeight: 600, padding: '4px 0', cursor: 'pointer', borderRadius: '6px',
-                  border: `1px solid ${on ? '#3b82f6' : '#334155'}`,
-                  background: on ? '#1e3a5f' : 'transparent',
-                  color: on ? '#e2e8f0' : '#8a99ae', whiteSpace: 'nowrap',
-                }}
-              >
-                {label} <span style={{ fontWeight: 500, opacity: 0.85 }}>{n}</span>
-              </button>
-            );
-          })}
-        </div>
+        <ListFilterBar counts={listCounts} value={listFilter} onChange={f => { setListFilter(f); setShowAll(false); }} />
       </div>
 
       {/* ── Event list ─────────────────────────────────────── */}

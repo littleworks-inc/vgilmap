@@ -11,6 +11,10 @@ import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
 import { DataHealthPanel } from './DataHealthPanel';
 import { SourceLink } from './SourceLink';
+import { ListFilterBar } from './ListFilterBar';
+import { KevGroupHeader } from './KevGroupHeader';
+import { buildListRows } from '../utils/listRows';
+import type { ListFilter } from '../utils/listRows';
 import type { SourceHealth } from '../health/sourceHealth';
 import type { Domain } from '../types';
 import type { AnomalySignal } from '../intelligence/anomaly';
@@ -47,6 +51,10 @@ export function MobileDrawer({
 }: MobileDrawerProps) {
   const [expanded, setExpanded] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null); // which no-location row is opened
+  // Same list controls as the desktop sidebar (transient: they reset on refresh).
+  const [listFilter, setListFilter] = useState<ListFilter>('all');
+  const [kevOpen, setKevOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const startY = useRef<number | null>(null);
   // Touch drag to open/close
   const onTouchStart = (e: React.TouchEvent) => {
@@ -59,8 +67,108 @@ export function MobileDrawer({
     if (delta < -40) setExpanded(false);
     startY.current = null;
   };
-  const recent = events.slice(0, 20);
+  // Filter + KEV grouping come from the shared helper; the drawer shows the newest rows and offers
+  // "Show all" so a long filtered list isn't silently cut off.
+  const DRAWER_ROWS = 20;
+  const { counts: listCounts, filtered, rows } = buildListRows(events, listFilter);
+  const recent = showAll ? rows : rows.slice(0, DRAWER_ROWS);
   const critCount = anomalySignals.filter(s => s.severity === 'critical').length;
+  // One event row (used directly and inside the expanded KEV group).
+  const renderEventRow = (ev: VigilEvent) => {
+            const isSelected = ev.id === selectedId;
+            const color = DOMAIN_COLORS[ev.domain] ?? '#6b7280';
+            const icon = DOMAIN_ICONS[ev.domain] ?? '🌐';
+            const unmapped = !isMappable(ev);
+            const opened = unmapped && openId === ev.id;
+            return (
+              <div
+                key={ev.id}
+                role="button"
+                tabIndex={0}
+                aria-expanded={unmapped ? opened : undefined}
+                onClick={() => {
+                  onSelectEvent(ev);
+                  if (unmapped) {
+                    // Nothing to fly to, so collapsing the drawer would reveal an empty spot on the
+                    // map. Open the event's details here instead.
+                    setOpenId(opened ? null : ev.id);
+                  } else {
+                    setExpanded(false); // collapse so the map flies into view
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); (e.currentTarget as HTMLElement).click(); }
+                }}
+                style={{
+                  width: '100%', textAlign: 'left',
+                  background: isSelected ? '#1e3a5f' : 'transparent',
+                  border: 'none', borderBottom: '1px solid #1e293b',
+                  padding: '12px 16px', cursor: 'pointer',
+                  display: 'flex', gap: '12px', alignItems: 'flex-start',
+                }}
+              >
+                <span style={{
+                  fontSize: '18px', flexShrink: 0, paddingTop: '1px',
+                  filter: `drop-shadow(0 0 4px ${color})`,
+                }}>{icon}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{
+                    fontSize: '13px', fontWeight: 500, color: '#e2e8f0',
+                    whiteSpace: opened ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {ev.category === 'earthquake' ? ev.location.label : ev.title}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#8a99ae', marginTop: '2px', display: 'flex', flexWrap: 'wrap', gap: '4px 8px', alignItems: 'center' }}>
+                    <span>
+                      {timeAgo(ev.timestamp)}
+                      {isMappable(ev) ? (ev.location.label && ` · ${ev.location.label}`) : ` · ${NO_MAP_LOCATION}`}
+                    </span>
+                    <SourceLink event={ev} />
+                    {unmapped && <span aria-hidden style={{ color: '#7d8ba1' }}>{opened ? 'details ▴' : 'details ▾'}</span>}
+                  </div>
+
+                  {/* What the event is about, for events that have no map popup to show it */}
+                  {opened && (
+                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#cbd5e1', lineHeight: 1.45, whiteSpace: 'normal', cursor: 'default' }}
+                         onClick={e => e.stopPropagation()}>
+                      <div>{ev.description}</div>
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: '#8a99ae' }}>
+                        {ev.source} · {new Date(ev.timestamp).toLocaleString()}
+                      </div>
+                      <div style={{ marginTop: '8px', fontSize: '13px' }}>
+                        <SourceLink event={ev} label={`Read the report on ${ev.source} ↗`} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <span style={{
+                  flexShrink: 0, fontSize: '10px', fontWeight: 700,
+                  padding: '2px 6px', borderRadius: '4px', marginLeft: 'auto',
+                  background: `${color}22`, border: `1px solid ${color}55`,
+                  color, alignSelf: 'center',
+                }}>
+                  {ev.severity}
+                </span>
+              </div>
+            );
+  };
+
+  const renderKevGroup = (list: VigilEvent[]) => {
+    const open = kevOpen || list.some(e => e.id === selectedId); // a selected entry must be visible
+    return (
+      <div key="kev-group">
+        <KevGroupHeader
+          count={list.length}
+          newestAgo={timeAgo(list[0].timestamp)}
+          open={open}
+          onToggle={() => setKevOpen(o => !o)}
+          padding="12px 16px"
+        />
+        {open && list.map(renderEventRow)}
+      </div>
+    );
+  };
+
   return (
     <div
       style={{
@@ -187,85 +295,22 @@ export function MobileDrawer({
               Refresh
             </button>
           </div>
+          <ListFilterBar counts={listCounts} value={listFilter} onChange={f => { setListFilter(f); setShowAll(false); }} compact />
           {/* Event list */}
-          {recent.map(ev => {
-            const isSelected = ev.id === selectedId;
-            const color = DOMAIN_COLORS[ev.domain] ?? '#6b7280';
-            const icon = DOMAIN_ICONS[ev.domain] ?? '🌐';
-            const unmapped = !isMappable(ev);
-            const opened = unmapped && openId === ev.id;
-            return (
-              <div
-                key={ev.id}
-                role="button"
-                tabIndex={0}
-                aria-expanded={unmapped ? opened : undefined}
-                onClick={() => {
-                  onSelectEvent(ev);
-                  if (unmapped) {
-                    // Nothing to fly to, so collapsing the drawer would reveal an empty spot on the
-                    // map. Open the event's details here instead.
-                    setOpenId(opened ? null : ev.id);
-                  } else {
-                    setExpanded(false); // collapse so the map flies into view
-                  }
-                }}
-                onKeyDown={e => {
-                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); (e.currentTarget as HTMLElement).click(); }
-                }}
-                style={{
-                  width: '100%', textAlign: 'left',
-                  background: isSelected ? '#1e3a5f' : 'transparent',
-                  border: 'none', borderBottom: '1px solid #1e293b',
-                  padding: '12px 16px', cursor: 'pointer',
-                  display: 'flex', gap: '12px', alignItems: 'flex-start',
-                }}
-              >
-                <span style={{
-                  fontSize: '18px', flexShrink: 0, paddingTop: '1px',
-                  filter: `drop-shadow(0 0 4px ${color})`,
-                }}>{icon}</span>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{
-                    fontSize: '13px', fontWeight: 500, color: '#e2e8f0',
-                    whiteSpace: opened ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  }}>
-                    {ev.category === 'earthquake' ? ev.location.label : ev.title}
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#8a99ae', marginTop: '2px', display: 'flex', flexWrap: 'wrap', gap: '4px 8px', alignItems: 'center' }}>
-                    <span>
-                      {timeAgo(ev.timestamp)}
-                      {isMappable(ev) ? (ev.location.label && ` · ${ev.location.label}`) : ` · ${NO_MAP_LOCATION}`}
-                    </span>
-                    <SourceLink event={ev} />
-                    {unmapped && <span aria-hidden style={{ color: '#7d8ba1' }}>{opened ? 'details ▴' : 'details ▾'}</span>}
-                  </div>
-
-                  {/* What the event is about, for events that have no map popup to show it */}
-                  {opened && (
-                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#cbd5e1', lineHeight: 1.45, whiteSpace: 'normal', cursor: 'default' }}
-                         onClick={e => e.stopPropagation()}>
-                      <div>{ev.description}</div>
-                      <div style={{ marginTop: '6px', fontSize: '11px', color: '#8a99ae' }}>
-                        {ev.source} · {new Date(ev.timestamp).toLocaleString()}
-                      </div>
-                      <div style={{ marginTop: '8px', fontSize: '13px' }}>
-                        <SourceLink event={ev} label={`Read the report on ${ev.source} ↗`} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <span style={{
-                  flexShrink: 0, fontSize: '10px', fontWeight: 700,
-                  padding: '2px 6px', borderRadius: '4px', marginLeft: 'auto',
-                  background: `${color}22`, border: `1px solid ${color}55`,
-                  color, alignSelf: 'center',
-                }}>
-                  {ev.severity}
-                </span>
-              </div>
-            );
-          })}
+          {recent.map(row => row.kind === 'kev' ? renderKevGroup(row.events) : renderEventRow(row.ev))}
+          {filtered.length === 0 && events.length > 0 && (
+            <div style={{ padding: '20px 16px', textAlign: 'center', color: '#7d8ba1', fontSize: '12px' }}>
+              {listFilter === 'map' ? 'Every event in this view has no map location.' : 'Every event in this view is on the map.'}
+            </div>
+          )}
+          {rows.length > DRAWER_ROWS && (
+            <button
+              onClick={() => setShowAll(v => !v)}
+              style={{ width: '100%', padding: '14px', background: 'none', border: 'none', borderTop: '1px solid #1e293b', color: '#7d8ba1', fontSize: '12px', cursor: 'pointer' }}
+            >
+              {showAll ? '▲ Show less' : `▼ Show all ${filtered.length} events`}
+            </button>
+          )}
           {error && (
             <div style={{ padding: '12px 16px', color: '#ef4444', fontSize: '12px' }}>
               ⚠ {error}
