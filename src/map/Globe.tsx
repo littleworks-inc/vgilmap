@@ -49,29 +49,29 @@ const POPUP_SEVERITY_COLORS: Record<string, string> = {
   low: '#facc15', info: '#6b7280',
 };
 
-// CartoDB Dark Matter — free vector tiles, no API key required.
-// © CartoDB, © OpenStreetMap contributors
+// Esri "World Dark Gray Base" raster tiles — no API key needed.
+// (CARTO's free public tiles now return an "API KEY REQUIRED" placeholder image.)
+// Note the {z}/{y}/{x} order, which differs from the usual {z}/{x}/{y}. Esri's terms expect
+// attribution; for heavy production traffic use an ArcGIS/MapTiler key instead.
 const MAP_STYLE: maplibregl.StyleSpecification = {
   version: 8,
   glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
   sources: {
-    'carto-tiles': {
+    'basemap-tiles': {
       type: 'raster',
       tiles: [
-        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
       ],
       tileSize: 256,
-      attribution: '© <a href="https://carto.com">CartoDB</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
-      maxzoom: 19,
+      attribution: 'Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors',
+      maxzoom: 16, // tiles end here; MapLibre overzooms beyond it
     },
   },
   layers: [
     {
-      id: 'carto-tiles',
+      id: 'basemap-tiles',
       type: 'raster',
-      source: 'carto-tiles',
+      source: 'basemap-tiles',
       minzoom: 0,
       maxzoom: 22,
     },
