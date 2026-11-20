@@ -193,6 +193,12 @@ function ShareButton({ eventId }: { eventId: string }) {
   );
 }
 
+type ListFilter = 'all' | 'map' | 'nomap';
+type ListRow = { kind: 'event'; ev: VigilEvent } | { kind: 'kev'; events: VigilEvent[] };
+
+/** An entry from CISA's KEV catalogue (not a news story about an exploited bug). */
+const isKevEntry = (ev: VigilEvent) => ev.category === 'vulnerability' && ev.source === 'CISA KEV';
+
 export function Sidebar({
   events,
   selectedId,
@@ -212,6 +218,9 @@ export function Sidebar({
 }: SidebarProps) {
   const [showAll, setShowAll]   = useState(false);
   const [query, setQuery]       = useState('');
+  // List-only controls: transient (they start fresh on refresh, like search and Show all).
+  const [listFilter, setListFilter] = useState<ListFilter>('all');
+  const [kevOpen, setKevOpen]       = useState(false);
   const INITIAL_COUNT = 50;
   // Normalize search query
   const trimmed = query.trim().toLowerCase();
@@ -231,9 +240,31 @@ export function Sidebar({
       })
     : events;
   // When searching show all matches; otherwise respect showAll/INITIAL_COUNT
-  const recent = trimmed
-    ? matchedEvents.slice(0, 200)
-    : (showAll ? events : events.slice(0, INITIAL_COUNT));
+  // "On map" / "No location" filter, with counts that follow the search box.
+  const base = trimmed ? matchedEvents : events;
+  const onMapCount = base.filter(isMappable).length;
+  const listCounts = { all: base.length, map: onMapCount, nomap: base.length - onMapCount };
+  const filtered = listFilter === 'map' ? base.filter(isMappable)
+    : listFilter === 'nomap' ? base.filter(ev => !isMappable(ev))
+    : base;
+
+  // Group the CISA KEV catalogue entries into one collapsible row: there can be dozens, they can
+  // never be plotted, and as separate rows they flood the list. A lone entry stays a normal row.
+  const rows: ListRow[] = [];
+  let kevGroup: Extract<ListRow, { kind: 'kev' }> | null = null;
+  for (const ev of trimmed ? filtered.slice(0, 200) : filtered) {
+    if (isKevEntry(ev)) {
+      if (!kevGroup) { kevGroup = { kind: 'kev', events: [] }; rows.push(kevGroup); }
+      kevGroup.events.push(ev);
+    } else {
+      rows.push({ kind: 'event', ev });
+    }
+  }
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.kind === 'kev' && r.events.length === 1) rows[i] = { kind: 'event', ev: r.events[0] };
+  }
+  const recent = trimmed ? rows : (showAll ? rows : rows.slice(0, INITIAL_COUNT));
   // Reset showAll when query changes
   const prevQuery = useRef('');
   useEffect(() => {
@@ -242,6 +273,115 @@ export function Sidebar({
       prevQuery.current = trimmed;
     }
   }, [trimmed]);
+
+  // One event row. Used directly and inside the expanded KEV group.
+  const renderEventRow = (ev: VigilEvent) => {
+          const isSelected = ev.id === selectedId;
+          // For earthquakes show the location label; for all others show the title
+          const primaryText = ev.category === 'earthquake' ? ev.location.label : ev.title;
+
+          return (
+            <button
+              key={ev.id}
+              onClick={() => onSelectEvent(ev)}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                background: isSelected ? '#1e3a5f' : 'transparent',
+                border: 'none',
+                borderBottom: '1px solid #1e293b',
+                padding: '10px 16px',
+                cursor: 'pointer',
+                display: 'flex',
+                gap: '10px',
+                alignItems: 'flex-start',
+                transition: 'background 0.1s',
+              }}
+              onMouseEnter={e =>
+                !isSelected && ((e.currentTarget as HTMLElement).style.background = '#172033')
+              }
+              onMouseLeave={e =>
+                !isSelected && ((e.currentTarget as HTMLElement).style.background = 'transparent')
+              }
+            >
+              {/* Domain-aware badge */}
+              <div style={{ paddingTop: '2px', flexShrink: 0 }}>
+                <EventBadge event={ev} />
+              </div>
+
+              {/* Text */}
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    color: '#e2e8f0',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {primaryText}
+                </div>
+                <div
+                  style={{
+                    fontSize: '11px',
+                    color: '#8a99ae',
+                    marginTop: '2px',
+                    display: 'flex',
+                    gap: '8px',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span>{timeAgo(ev.timestamp)}</span>
+                  <EventMeta event={ev} />
+                  {/* One consistent marker for every event that is listed but not plotted */}
+                  {!isMappable(ev) && (
+                    <span
+                      title="This event has no real-world place, so it appears in the list but not on the map"
+                      style={{ fontSize: '10px', padding: '0 6px', borderRadius: '8px', border: '1px solid #334155', color: '#8a99ae', whiteSpace: 'nowrap' }}
+                    >
+                      {NO_MAP_LOCATION}
+                    </span>
+                  )}
+                  <ShareButton eventId={ev.id} />
+                </div>
+              </div>
+            </button>
+          );
+  };
+
+  // The collapsed-by-default group for CISA KEV entries.
+  const renderKevGroup = (list: VigilEvent[]) => {
+    const open = kevOpen || list.some(e => e.id === selectedId); // a selected entry must be visible
+    return (
+      <div key="kev-group">
+        <button
+          onClick={() => setKevOpen(o => !o)}
+          aria-expanded={open}
+          title="CISA's Known Exploited Vulnerabilities catalogue. These are software flaws, so they have no map location."
+          style={{
+            width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', gap: '10px', alignItems: 'center',
+            padding: '10px 16px', background: '#0f172a', border: 'none', borderLeft: '3px solid #84cc16',
+            borderBottom: '1px solid #1e293b',
+          }}
+        >
+          <span style={{ fontSize: '16px', flexShrink: 0 }}>{DOMAIN_ICONS.cyber}</span>
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>
+              Exploited vulnerabilities · {list.length}
+            </span>
+            <span style={{ display: 'block', fontSize: '11px', color: '#8a99ae', marginTop: '2px' }}>
+              CISA KEV · newest {timeAgo(list[0].timestamp)} · {NO_MAP_LOCATION}
+            </span>
+          </span>
+          <span aria-hidden style={{ fontSize: '11px', color: '#7d8ba1' }}>{open ? '▲' : '▼'}</span>
+        </button>
+        {open && list.map(renderEventRow)}
+      </div>
+    );
+  };
 
   return (
     <aside
@@ -447,6 +587,31 @@ export function Sidebar({
             </button>
           )}
         </div>
+        {/* Filter by whether an event can be shown on the map */}
+        <div role="group" aria-label="Filter the list by map location" style={{ display: 'flex', gap: '4px', padding: '0 12px 8px' }}>
+          {([
+            ['all', 'All', listCounts.all],
+            ['map', 'On map', listCounts.map],
+            ['nomap', 'No location', listCounts.nomap],
+          ] as Array<[ListFilter, string, number]>).map(([id, label, n]) => {
+            const on = listFilter === id;
+            return (
+              <button
+                key={id}
+                onClick={() => { setListFilter(id); setShowAll(false); }}
+                aria-pressed={on}
+                style={{
+                  flex: 1, fontSize: '11px', fontWeight: 600, padding: '4px 0', cursor: 'pointer', borderRadius: '6px',
+                  border: `1px solid ${on ? '#3b82f6' : '#334155'}`,
+                  background: on ? '#1e3a5f' : 'transparent',
+                  color: on ? '#e2e8f0' : '#8a99ae', whiteSpace: 'nowrap',
+                }}
+              >
+                {label} <span style={{ fontWeight: 500, opacity: 0.85 }}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Event list ─────────────────────────────────────── */}
@@ -521,86 +686,18 @@ export function Sidebar({
           </div>
         )}
 
-        {recent.map(ev => {
-          const isSelected = ev.id === selectedId;
-          // For earthquakes show the location label; for all others show the title
-          const primaryText = ev.category === 'earthquake' ? ev.location.label : ev.title;
-
-          return (
-            <button
-              key={ev.id}
-              onClick={() => onSelectEvent(ev)}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                background: isSelected ? '#1e3a5f' : 'transparent',
-                border: 'none',
-                borderBottom: '1px solid #1e293b',
-                padding: '10px 16px',
-                cursor: 'pointer',
-                display: 'flex',
-                gap: '10px',
-                alignItems: 'flex-start',
-                transition: 'background 0.1s',
-              }}
-              onMouseEnter={e =>
-                !isSelected && ((e.currentTarget as HTMLElement).style.background = '#172033')
-              }
-              onMouseLeave={e =>
-                !isSelected && ((e.currentTarget as HTMLElement).style.background = 'transparent')
-              }
-            >
-              {/* Domain-aware badge */}
-              <div style={{ paddingTop: '2px', flexShrink: 0 }}>
-                <EventBadge event={ev} />
-              </div>
-
-              {/* Text */}
-              <div style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 500,
-                    color: '#e2e8f0',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {primaryText}
-                </div>
-                <div
-                  style={{
-                    fontSize: '11px',
-                    color: '#8a99ae',
-                    marginTop: '2px',
-                    display: 'flex',
-                    gap: '8px',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                  }}
-                >
-                  <span>{timeAgo(ev.timestamp)}</span>
-                  <EventMeta event={ev} />
-                  {/* One consistent marker for every event that is listed but not plotted */}
-                  {!isMappable(ev) && (
-                    <span
-                      title="This event has no real-world place, so it appears in the list but not on the map"
-                      style={{ fontSize: '10px', padding: '0 6px', borderRadius: '8px', border: '1px solid #334155', color: '#8a99ae', whiteSpace: 'nowrap' }}
-                    >
-                      {NO_MAP_LOCATION}
-                    </span>
-                  )}
-                  <ShareButton eventId={ev.id} />
-                </div>
-              </div>
-            </button>
-          );
-        })}
+        {recent.map(row => row.kind === 'kev'
+          ? renderKevGroup(row.events)
+          : renderEventRow(row.ev))}
+        {!loading && !error && base.length > 0 && filtered.length === 0 && (
+          <div style={{ padding: '20px 16px', textAlign: 'center', color: '#7d8ba1', fontSize: '12px' }}>
+            {listFilter === 'map' ? 'Every event in this view has no map location.' : 'Every event in this view is on the map.'}
+          </div>
+        )}
       </div>
 
       {/* ── Load more / footer ──────────────────────────── */}
-      {!trimmed && events.length > INITIAL_COUNT && (
+      {!trimmed && rows.length > INITIAL_COUNT && (
         <button
           onClick={() => setShowAll(v => !v)}
           style={{
@@ -619,7 +716,7 @@ export function Sidebar({
         >
           {showAll
             ? `▲ Show less`
-            : `▼ Show all ${events.length} events`}
+            : `▼ Show all ${filtered.length} events`}
         </button>
       )}
       <div

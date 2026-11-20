@@ -35,7 +35,7 @@ const RULES: Array<[RegExp, Kind]> = [
   [/data breach|breached|\bbreach(es)?\b|data leak|leaked|stole[n]?\b|exposes?\b.*(data|customers|records)|exfiltrat|customer data|hackers? (steal|stole|claim)/i, { category: 'data-breach', label: 'Data breach', severity: 'high' }],
   [/malware|trojan|botnet|infostealer|info-stealer|stealer|backdoor|spyware|rootkit|\bworm\b|wiper|\bRAT\b|loader|cryptojack|clickfix/i, { category: 'malware', label: 'Malware', severity: 'medium' }],
   [/phishing|smishing|vishing|\bscams?\b|business email compromise|\bbec\b|credential theft/i, { category: 'phishing', label: 'Phishing / scam', severity: 'medium' }],
-  [/cyber[- ]?attack|cyber incident|security incident|hit by (a )?(cyber)?attack|network (disruption|intrusion)|systems? (outage|disruption)|intrusion/i, { category: 'cyberattack', label: 'Cyber incident', severity: 'medium' }],
+  [/(?:hackers?|attackers?|threat actors?)\b[^.,:;]{0,25}?\b(?:target|hit|attack|breach|compromis)|cyber[- ]?attack|cyber incident|security incident|hit by (a )?(cyber)?attack|network (disruption|intrusion)|systems? (outage|disruption)|intrusion/i, { category: 'cyberattack', label: 'Cyber incident', severity: 'medium' }],
 ];
 
 function classify(title: string): Kind | null {
@@ -57,6 +57,29 @@ function guessVictim(title: string, category: string): string | undefined {
   const m = title.match(/^(.{2,60}?)\s+(?:says|confirms|confirmed|discloses|disclosed|warns|reveals|notifies|suffers|suffered|hit by|hacked|breached|restores|reports?)\b/i);
   const v = m?.[1]?.trim();
   return v && !/^(hackers?|attackers?|researchers?|new)$/i.test(v) && v.split(/\s+/).length <= 6 ? v : undefined;
+}
+
+/**
+ * Phrases that name the ATTACKER ("China-linked hackers", "Iran-backed group", "Chinese APT"), not
+ * where the incident happened. They are removed before looking for a place, otherwise
+ * "China-Linked Hackers Exploit VMware Zero-Day" would be plotted in China.
+ */
+const ATTRIBUTION = new RegExp(
+  [
+    String.raw`\b(?:china|russia|iran|north korea|israel|belarus|vietnam|pakistan|india)[- ](?:linked|based|backed|nexus|aligned|sponsored|affiliated|origin)\b`,
+    String.raw`\b(?:chinese|russian|iranian|north korean|israeli|belarusian|vietnamese|pakistani|indian)\s+(?:state[- ]sponsored\s+|state[- ]backed\s+)?(?:hackers?|apt\d*|threat actors?|cyber ?(?:criminals?|spies|actors?)|groups?|government|state|operatives?)\b`,
+    String.raw`\b(?:from|by|in)\s+(?:china|russia|iran|north korea)\b(?=\s+(?:hackers?|apt|actors?|groups?))`,
+    // possessive attribution: "Russia's Cold Relic APT", "China's Salt Typhoon hackers"
+    String.raw`\b(?:china|russia|iran|north korea)['’]s\b(?=[^.]{0,40}\b(?:apt\d*|hackers?|groups?|actors?|operatives?|typhoon|bear|panda|kitten)\b)`,
+    // the attacker described by where it sits: "hackers in China", "groups based in Russia"
+    String.raw`\b(?:hackers?|attackers?|threat actors?|groups?|apt\d*)\s+(?:in|from|based in)\s+(?:china|russia|iran|north korea)\b`,
+  ].join('|'),
+  'gi',
+);
+
+/** The first country named in the headline once attacker attribution is removed. */
+function victimCountry(title: string) {
+  return findCountries(title.replace(ATTRIBUTION, ' '))[0];
 }
 
 function hashId(s: string): string {
@@ -83,7 +106,7 @@ export async function fetchCyberNews(): Promise<VigilEvent[]> {
     seen.add(id);
 
     const victim = guessVictim(item.title, kind.category);
-    const country = findCountries(item.title)[0];
+    const country = victimCountry(item.title);
     events.push({
       id,
       timestamp: item.date,
