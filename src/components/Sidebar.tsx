@@ -96,6 +96,26 @@ function EventMeta({ event }: { event: VigilEvent }) {
     const type = meta.event_type as string | undefined;
     return type ? <span style={{ color: '#60a5fa' }}>{type}</span> : null;
   }
+  if (event.category === 'ransomware') {
+    const victim = meta.victim as string | undefined;
+    const sector = meta.sector as string | undefined;
+    const group = meta.group as string | undefined;
+    return (
+      <span style={{ color: '#84cc16' }}>
+        {[victim, sector, group && `by ${group}`].filter(Boolean).join(' · ')}
+      </span>
+    );
+  }
+  if (event.category === 'vulnerability') {
+    const vendor = meta.vendor as string | undefined;
+    const product = meta.product as string | undefined;
+    return (
+      <span style={{ color: '#84cc16' }}>
+        {[vendor, product].filter(Boolean).join(' ')}
+        {Boolean(meta.ransomwareUse) && ' · ransomware-linked'}
+      </span>
+    );
+  }
   if (event.domain === 'science') {
     const tags = (event.tags ?? []).slice(0, 2).join(' · ');
     return tags ? (
@@ -561,7 +581,7 @@ export function Sidebar({
           textAlign: 'center',
         }}
       >
-        USGS · NASA FIRMS · NOAA · GDELT · WHO · NASA DONKI · MIT License
+        USGS · NASA FIRMS · NOAA · GDELT · WHO · NASA DONKI · ransomware.live · CISA KEV · MIT License
       </div>
     </aside>
   );

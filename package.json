@@ -2,19 +2,21 @@
   "name": "vigilmap",
   "private": true,
   "version": "0.1.0",
-  "description": "Open-source global intelligence platform — unified real-time monitoring of health, climate, conflict, disasters, economics, labor, and science.",
+  "description": "Open-source global intelligence platform \u2014 unified real-time monitoring of health, climate, conflict, disasters, economics, labor, and science.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "backfill:cyber": "tsx --env-file=.env.local scripts/backfill-cyber.ts"
   },
   "dependencies": {
     "@deck.gl/core": "^9.2.9",
     "@deck.gl/layers": "^9.2.9",
     "@deck.gl/mapbox": "^9.2.9",
+    "@upstash/redis": "^1.41.0",
     "maplibre-gl": "^5.19.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
@@ -29,6 +31,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
     "vite": "^7.3.1"

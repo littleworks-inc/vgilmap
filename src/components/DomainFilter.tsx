@@ -19,6 +19,7 @@ const DOMAIN_LABELS: Record<Domain, string> = {
   economic: 'Economic',
   labor:    'Labor',
   science:  'Science',
+  cyber:    'Cyber',
 };
 
 // Only show domains that actually have data (or will soon)
@@ -30,6 +31,7 @@ const VISIBLE_DOMAINS: Domain[] = [
   'economic',
   'labor',
   'science',
+  'cyber',
 ];
 
 // ─── Component ─────────────────────────────────────────────

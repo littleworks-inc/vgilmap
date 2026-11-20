@@ -10,7 +10,8 @@ export type Domain =
   | 'economic'
   | 'disaster'
   | 'labor'
-  | 'science';
+  | 'science'
+  | 'cyber';
 
 export type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical';
 
@@ -46,6 +47,10 @@ export type Category =
   // science
   | 'research'
   | 'retraction'
+  // cyber
+  | 'ransomware'
+  | 'vulnerability'
+  | 'data-breach'
   | string; // Allow arbitrary categories from future adapters
 
 export interface EventLocation {
@@ -100,6 +105,7 @@ export const DOMAIN_COLORS: Record<Domain, string> = {
   economic: '#eab308',
   labor: '#3b82f6',
   science: '#10b981',
+  cyber: '#84cc16',
 };
 
 export const DOMAIN_ICONS: Record<Domain, string> = {
@@ -110,6 +116,7 @@ export const DOMAIN_ICONS: Record<Domain, string> = {
   economic: '💰',
   labor: '✊',
   science: '🔬',
+  cyber: '🛡️',
 };
 
 // ─── Map display helpers ───────────────────────────────────

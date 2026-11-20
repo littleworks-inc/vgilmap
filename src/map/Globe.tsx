@@ -27,11 +27,22 @@ const SOURCE_ID = 'vigil-events';
 // can't reference module-level imports at serialization time.
 const POPUP_DOMAIN_COLORS: Record<string, string> = {
   disaster: '#ef4444', climate: '#22d3ee', health: '#ec4899',
-  conflict: '#7c3aed', economic: '#eab308', labor: '#3b82f6', science: '#10b981',
+  conflict: '#7c3aed', economic: '#eab308', labor: '#3b82f6', science: '#10b981', cyber: '#84cc16',
 };
+// Cluster colour = domain with the highest aggregated count (ties go to earlier entries).
+const CLUSTER_DOMAINS = ['disaster', 'conflict', 'climate', 'health', 'economic', 'labor', 'science', 'cyber'] as const;
+const CLUSTER_COLOR_EXPR: unknown[] = ['case'];
+CLUSTER_DOMAINS.slice(0, -1).forEach((d, i) => {
+  CLUSTER_COLOR_EXPR.push(
+    ['all', ...CLUSTER_DOMAINS.slice(i + 1).map(o => ['>=', ['get', `cnt_${d}`], ['get', `cnt_${o}`]])],
+    POPUP_DOMAIN_COLORS[d],
+  );
+});
+CLUSTER_COLOR_EXPR.push(POPUP_DOMAIN_COLORS[CLUSTER_DOMAINS[CLUSTER_DOMAINS.length - 1]]);
+
 const POPUP_DOMAIN_ICONS: Record<string, string> = {
   disaster: '🌋', climate: '🌡️', health: '🏥',
-  conflict: '⚔️', economic: '💰', labor: '✊', science: '🔬',
+  conflict: '⚔️', economic: '💰', labor: '✊', science: '🔬', cyber: '🛡️',
 };
 const POPUP_SEVERITY_COLORS: Record<string, string> = {
   critical: '#7c3aed', high: '#ef4444', medium: '#f97316',
@@ -190,6 +201,19 @@ function renderPopup(props: PopupProps): string {
     secondary = `🏥 WHO Disease Outbreak<br/>Country: ${country}`;
     linkLabel = 'News source ↗';
 
+  } else if (props.category === 'ransomware') {
+    const victim = (meta.victim as string) ?? 'Unknown';
+    const sector = (meta.sector as string) ?? 'Unknown';
+    const group = (meta.group as string) ?? 'Unknown';
+    secondary = `🛡️ Ransomware<br/>Victim: ${victim}<br/>Sector: ${sector} · Group: ${group}`;
+    linkLabel = 'ransomware.live ↗';
+
+  } else if (props.category === 'vulnerability') {
+    const vendor = (meta.vendor as string) ?? '';
+    const product = (meta.product as string) ?? '';
+    secondary = `🛡️ Actively exploited vulnerability<br/>${vendor} ${product}${meta.ransomwareUse ? '<br/>Used in ransomware campaigns' : ''}`;
+    linkLabel = 'NVD ↗';
+
   } else if (props.domain === 'science') {
     const tagsArr = Array.isArray(props.tags)
       ? props.tags
@@ -338,6 +362,7 @@ export function Globe({ events, onEventClick }: GlobeProps) {
           cnt_economic: ['+', ['case', ['==', ['get', 'domain'], 'economic'], 1, 0]],
           cnt_labor:    ['+', ['case', ['==', ['get', 'domain'], 'labor'],    1, 0]],
           cnt_science:  ['+', ['case', ['==', ['get', 'domain'], 'science'],  1, 0]],
+          cnt_cyber:    ['+', ['case', ['==', ['get', 'domain'], 'cyber'],    1, 0]],
         },
       });
 
@@ -349,48 +374,7 @@ export function Globe({ events, onEventClick }: GlobeProps) {
         filter: ['has', 'point_count'],
         paint: {
           // Color = dominant domain inside the cluster
-          'circle-color': [
-            'case',
-            // disaster leads?
-            ['all',
-              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_climate']],
-              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_health']],
-              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_conflict']],
-              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_economic']],
-              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_labor']],
-              ['>=', ['get', 'cnt_disaster'], ['get', 'cnt_science']],
-            ], '#ef4444',
-            // conflict leads?
-            ['all',
-              ['>=', ['get', 'cnt_conflict'], ['get', 'cnt_climate']],
-              ['>=', ['get', 'cnt_conflict'], ['get', 'cnt_health']],
-              ['>=', ['get', 'cnt_conflict'], ['get', 'cnt_economic']],
-              ['>=', ['get', 'cnt_conflict'], ['get', 'cnt_labor']],
-              ['>=', ['get', 'cnt_conflict'], ['get', 'cnt_science']],
-            ], '#7c3aed',
-            // climate leads?
-            ['all',
-              ['>=', ['get', 'cnt_climate'], ['get', 'cnt_health']],
-              ['>=', ['get', 'cnt_climate'], ['get', 'cnt_economic']],
-              ['>=', ['get', 'cnt_climate'], ['get', 'cnt_labor']],
-              ['>=', ['get', 'cnt_climate'], ['get', 'cnt_science']],
-            ], '#22d3ee',
-            // health leads?
-            ['all',
-              ['>=', ['get', 'cnt_health'], ['get', 'cnt_economic']],
-              ['>=', ['get', 'cnt_health'], ['get', 'cnt_labor']],
-              ['>=', ['get', 'cnt_health'], ['get', 'cnt_science']],
-            ], '#ec4899',
-            // economic leads?
-            ['all',
-              ['>=', ['get', 'cnt_economic'], ['get', 'cnt_labor']],
-              ['>=', ['get', 'cnt_economic'], ['get', 'cnt_science']],
-            ], '#eab308',
-            // labor leads?
-            ['>=', ['get', 'cnt_labor'], ['get', 'cnt_science']], '#3b82f6',
-            // science fallback
-            '#10b981',
-          ],
+          'circle-color': CLUSTER_COLOR_EXPR as maplibregl.ExpressionSpecification,
           'circle-radius': [
             'step',
             ['get', 'point_count'],

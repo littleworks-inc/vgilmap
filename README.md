@@ -183,7 +183,7 @@ curl "https://vgilmap.vercel.app/api/v1/events?since=2026-02-28T00:00:00Z"
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `domain` | string | Comma-separated: `disaster`, `climate`, `health`, `conflict`, `economic`, `labor`, `science` |
+| `domain` | string | Comma-separated: `disaster`, `climate`, `health`, `conflict`, `economic`, `labor`, `science`, `cyber` |
 | `severity` | string | Minimum level: `info`, `low`, `medium`, `high`, `critical` |
 | `limit` | integer | Max results (default + max: 100) |
 | `since` | ISO datetime | Only events after this timestamp |

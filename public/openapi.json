@@ -73,7 +73,7 @@
         "properties": {
           "id": { "type": "string" },
           "timestamp": { "type": "string", "format": "date-time" },
-          "domain": { "type": "string", "enum": ["disaster","climate","health","conflict","economic","labor","science"] },
+          "domain": { "type": "string", "enum": ["disaster","climate","health","conflict","economic","labor","science","cyber"] },
           "category": { "type": "string" },
           "severity": { "type": "string", "enum": ["info","low","medium","high","critical"] },
           "title": { "type": "string" },

@@ -2,7 +2,7 @@
  * VigilMap Public REST API — /api/v1/events
  *
  * GET /api/v1/events
- *   ?domain=disaster,climate,health,conflict,economic,labor,science
+ *   ?domain=disaster,climate,health,conflict,economic,labor,science,cyber
  *   ?severity=info,low,medium,high,critical
  *   ?limit=50 (max 100)
  *   ?since=2025-01-01T00:00:00Z (ISO timestamp)
@@ -18,7 +18,7 @@ const CORS = {
 };
 // ── Types (duplicated from src/types for edge runtime) ─────
 type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical';
-type Domain = 'health' | 'climate' | 'conflict' | 'economic' | 'disaster' | 'labor' | 'science';
+type Domain = 'health' | 'climate' | 'conflict' | 'economic' | 'disaster' | 'labor' | 'science' | 'cyber';
 interface VigilEvent {
   id: string;
   timestamp: string;

@@ -27,6 +27,7 @@ import { fetchWHOOutbreaks } from './adapters/who';
 import { fetchReliefWeb } from './adapters/reliefweb';
 import { fetchGDELTEconomic } from './adapters/gdelt-economic';
 import { fetchScience } from './adapters/science';
+import { fetchCyber } from './adapters/cyber';
 import type { Domain, VigilEvent } from './types';
 import { DOMAIN_ICONS, DOMAIN_COLORS } from './types';
 import { detectAnomalies } from './intelligence/anomaly';
@@ -37,7 +38,7 @@ import type { AnomalySignal } from './intelligence/anomaly';
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 const ALL_DOMAINS: Domain[] = [
-  'disaster', 'climate', 'health', 'conflict', 'economic', 'labor', 'science',
+  'disaster', 'climate', 'health', 'conflict', 'economic', 'labor', 'science', 'cyber',
 ];
 
 const DOMAIN_LABELS: Record<Domain, string> = {
@@ -48,6 +49,7 @@ const DOMAIN_LABELS: Record<Domain, string> = {
   economic: 'Economic',
   labor:    'Labor',
   science:  'Science',
+  cyber:    'Cyber',
 };
 
 // ─── URL helpers ───────────────────────────────────────────
@@ -79,6 +81,7 @@ const ADAPTERS: Array<{
   { key: 'reliefweb',  label: 'ReliefWeb',        fetch: fetchReliefWeb },
   { key: 'gdelt-econ', label: 'GDELT Economic',   fetch: fetchGDELTEconomic },
   { key: 'science',    label: 'Science',           fetch: fetchScience },
+  { key: 'cyber',      label: 'Cyber',             fetch: fetchCyber },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -401,7 +404,7 @@ export default function App() {
                 <div style={{ fontSize: '36px', marginBottom: '10px' }}>🌍</div>
                 <div>Loading global intelligence data…</div>
                 <div style={{ fontSize: '11px', color: '#475569', marginTop: '6px' }}>
-                  USGS · NASA FIRMS · NOAA · GDELT · WHO · ReliefWeb · NASA DONKI
+                  USGS · NASA FIRMS · NOAA · GDELT · WHO · ReliefWeb · NASA DONKI · ransomware.live · CISA KEV
                 </div>
               </div>
             </div>
