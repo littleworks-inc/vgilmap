@@ -117,6 +117,9 @@ export function isMappable(ev: VigilEvent): boolean {
   return !ev.metadata?.unlocated;
 }
 
+/** The one wording used everywhere an unmapped event is listed (sidebar, drawer, ticker). */
+export const NO_MAP_LOCATION = 'no map location';
+
 /** A cyber "drill-down" chosen from the Cyber Trends panel. */
 export type CyberFocusDimension = 'countries' | 'sectors' | 'groups';
 

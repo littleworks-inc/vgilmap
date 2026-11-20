@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import type { VigilEvent } from '../types';
-import { DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
+import { DOMAIN_COLORS, DOMAIN_ICONS, isMappable, NO_MAP_LOCATION } from '../types';
 interface Props {
   events: VigilEvent[];
   onSelectEvent?: (ev: VigilEvent) => void;
@@ -115,12 +115,12 @@ export function LiveTicker({ events, onSelectEvent }: Props) {
           {ev.title}
         </span>
         {/* Location */}
-        {ev.location.label && (
+        {(ev.location.label || !isMappable(ev)) && (
           <span style={{
             fontSize: '11px', color: '#8a99ae',
             whiteSpace: 'nowrap', flexShrink: 0,
           }}>
-            — {ev.location.label}
+            — {isMappable(ev) ? ev.location.label : NO_MAP_LOCATION}
           </span>
         )}
       </div>

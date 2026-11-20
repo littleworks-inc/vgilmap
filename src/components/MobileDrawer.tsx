@@ -5,7 +5,7 @@
  */
 import { useState, useRef } from 'react';
 import type { VigilEvent } from '../types';
-import { DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
+import { DOMAIN_COLORS, DOMAIN_ICONS, isMappable, NO_MAP_LOCATION } from '../types';
 import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
@@ -218,7 +218,7 @@ export function MobileDrawer({
                   </div>
                   <div style={{ fontSize: '11px', color: '#8a99ae', marginTop: '2px' }}>
                     {timeAgo(ev.timestamp)}
-                    {ev.location.label && ` · ${ev.location.label}`}
+                    {isMappable(ev) ? (ev.location.label && ` · ${ev.location.label}`) : ` · ${NO_MAP_LOCATION}`}
                   </div>
                 </div>
                 <span style={{

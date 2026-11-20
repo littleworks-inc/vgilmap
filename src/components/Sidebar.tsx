@@ -7,7 +7,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import type { VigilEvent } from '../types';
-import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
+import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS, isMappable, NO_MAP_LOCATION } from '../types';
 import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
@@ -125,7 +125,6 @@ function EventMeta({ event }: { event: VigilEvent }) {
     return (
       <span style={{ color: '#84cc16' }}>
         {[kind, impacted && `impacted${meta.pwnCount == null ? ' (per headline)' : ''}: ${impacted}`, accounts].filter(Boolean).join(' · ')}
-        {Boolean(meta.unlocated) && <span style={{ color: '#8a99ae' }}> · no map location</span>}
       </span>
     );
   }
@@ -136,7 +135,6 @@ function EventMeta({ event }: { event: VigilEvent }) {
       <span style={{ color: '#84cc16' }}>
         {[vendor, product].filter(Boolean).join(' ')}
         {Boolean(meta.ransomwareUse) && ' · ransomware-linked'}
-        <span style={{ color: '#8a99ae' }}> · no map location</span>
       </span>
     );
   }
@@ -584,6 +582,15 @@ export function Sidebar({
                 >
                   <span>{timeAgo(ev.timestamp)}</span>
                   <EventMeta event={ev} />
+                  {/* One consistent marker for every event that is listed but not plotted */}
+                  {!isMappable(ev) && (
+                    <span
+                      title="This event has no real-world place, so it appears in the list but not on the map"
+                      style={{ fontSize: '10px', padding: '0 6px', borderRadius: '8px', border: '1px solid #334155', color: '#8a99ae', whiteSpace: 'nowrap' }}
+                    >
+                      {NO_MAP_LOCATION}
+                    </span>
+                  )}
                   <ShareButton eventId={ev.id} />
                 </div>
               </div>
