@@ -117,7 +117,6 @@ api/                             # Vercel edge functions — server-side proxies
 ├── gdelt.ts                     # GDELT proxy with 3-timespan retry logic
 ├── conflict-rss.ts              # BBC / DW / Guardian RSS proxy
 ├── noaa.ts                      # NOAA proxy (NWS requires User-Agent header)
-├── gdelt-health.ts              # GDELT health news proxy
 └── v1/
     ├── events.ts                # Public REST API — all events with filtering
     └── summary.ts               # Public REST API — counts by domain/severity

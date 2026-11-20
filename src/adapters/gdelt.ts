@@ -8,6 +8,7 @@
  * Results merge and deduplicate. Either source failing is silent.
  */
 import type { VigilEvent, Severity } from '../types';
+import { gdeltFetch } from './gdelt-queue';
 // ─── Shared helpers ────────────────────────────────────────
 function hashId(s: string): string {
   let h = 0;
@@ -67,7 +68,7 @@ interface GDELTArticle {
   sourcecountry: string;
 }
 async function fromGDELT(): Promise<VigilEvent[]> {
-  const res = await fetch('/api/gdelt');
+  const res = await gdeltFetch('/api/gdelt');
   if (!res.ok) throw new Error(`gdelt proxy ${res.status}`);
   const json = await res.json();
   const events: VigilEvent[] = [];

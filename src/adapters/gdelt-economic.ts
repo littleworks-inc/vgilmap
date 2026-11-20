@@ -4,6 +4,7 @@
  * Reuses /api/gdelt-economic edge proxy.
  */
 import type { VigilEvent, Severity } from '../types';
+import { gdeltFetch } from './gdelt-queue';
 
 const ECON_KEYWORDS =
   /sanction|inflation|recession|default|debt crisis|financial crisis|bank run|currency crisis|unemployment surge|mass layoff|strike|worker protest|supply chain/i;
@@ -77,7 +78,7 @@ function seendateToISO(s: string): string {
 
 export async function fetchGDELTEconomic(): Promise<VigilEvent[]> {
   try {
-    const res = await fetch('/api/gdelt-economic');
+    const res = await gdeltFetch('/api/gdelt-economic');
     if (!res.ok) throw new Error(`gdelt-economic proxy ${res.status}`);
     const json = await res.json();
     const events: VigilEvent[] = [];
