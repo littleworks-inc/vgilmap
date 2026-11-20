@@ -22,10 +22,10 @@ import { fetchUSGSEarthquakes } from './adapters/usgs';
 import { fetchUSGSSignificantWeek } from './adapters/usgs-significant-week';
 import { fetchNASAFirms } from './adapters/nasa-firms';
 import { fetchNOAAAlerts } from './adapters/noaa';
-import { fetchGDELT } from './adapters/gdelt';
+import { fetchGDELT, fetchConflictNews } from './adapters/gdelt';
 import { fetchWHOOutbreaks } from './adapters/who';
 import { fetchReliefWeb } from './adapters/reliefweb';
-import { fetchGDELTEconomic } from './adapters/gdelt-economic';
+import { fetchEconomicNews } from './adapters/economic-news';
 import { fetchScience } from './adapters/science';
 import { fetchCyber } from './adapters/cyber';
 import type { CyberFocus, Domain, TimeWindowId, VigilEvent } from './types';
@@ -83,10 +83,11 @@ const ADAPTERS: Array<{
   { key: 'usgs-week',  label: 'USGS Significant', domain: 'disaster', staleAfterHours: 168, fetch: fetchUSGSSignificantWeek },
   { key: 'nasa-firms', label: 'NASA FIRMS',        domain: 'climate',  staleAfterHours: 24,  fetch: fetchNASAFirms },
   { key: 'noaa',       label: 'NOAA Alerts',       domain: 'climate',  staleAfterHours: 12,  fetch: fetchNOAAAlerts },
+  { key: 'conflict-rss', label: 'Conflict News (RSS)', domain: 'conflict', staleAfterHours: 12, fetch: fetchConflictNews },
   { key: 'gdelt',      label: 'GDELT Conflict',    domain: 'conflict', staleAfterHours: 24,  fetch: fetchGDELT },
-  { key: 'who',        label: 'WHO Outbreaks',     domain: 'health',   staleAfterHours: 720, fetch: fetchWHOOutbreaks },
-  { key: 'reliefweb',  label: 'ReliefWeb',         domain: 'economic', staleAfterHours: 168, fetch: fetchReliefWeb },
-  { key: 'gdelt-econ', label: 'GDELT Economic',    domain: 'economic', staleAfterHours: 48,  fetch: fetchGDELTEconomic },
+  { key: 'who',        label: 'WHO Outbreak News', domain: 'health',   staleAfterHours: 720, fetch: fetchWHOOutbreaks },
+  { key: 'reliefweb',  label: 'ReliefWeb Disasters', domain: 'disaster', staleAfterHours: 1080, fetch: fetchReliefWeb },
+  { key: 'economic-news', label: 'Economic & Labor News', domain: 'economic', staleAfterHours: 24, fetch: fetchEconomicNews },
   { key: 'science',    label: 'NASA Space Weather', domain: 'science', staleAfterHours: 168, fetch: fetchScience },
   { key: 'cyber',      label: 'Cyber',             domain: 'cyber',    staleAfterHours: 72,  fetch: fetchCyber },
 ];
@@ -264,7 +265,7 @@ export default function App() {
   const [timeWindow, setTimeWindow] = useState<TimeWindowId>(DEFAULT_TIME_WINDOW);
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>(() =>
     ADAPTERS.map(a => ({
-      key: a.key, label: a.label, domain: a.domain, status: 'loading' as const, count: 0, warnings: [],
+      key: a.key, label: a.label, domain: a.domain, status: 'loading' as const, count: 0, warnings: [], startedAt: Date.now(),
     })),
   );
   const lastOkRef = useRef<Map<string, number>>(new Map());

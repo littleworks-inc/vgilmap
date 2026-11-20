@@ -1,160 +1,93 @@
 /**
- * ReliefWeb adapter — UN OCHA humanitarian crisis database
- * Covers food insecurity, displacement, economic shocks, labor crises.
- * Free JSON API, no key required, proxied through edge function.
+ * ReliefWeb adapter — UN OCHA humanitarian disasters.
+ *
+ * Source: ReliefWeb's public Disasters RSS feed, via /api/reliefweb. (Its JSON API was retired,
+ * and the replacement needs a registered app name; the RSS feed needs nothing.)
+ *
+ * Each item has the affected country and a GLIDE disaster ID whose prefix says what kind of
+ * disaster it is (FL flood, EQ earthquake, EP epidemic, …), which we use to classify properly
+ * instead of guessing from keywords.
  */
-import type { VigilEvent, Severity } from '../types';
+import type { VigilEvent, Severity, Domain } from '../types';
+import { countryName, findCountries } from './countries';
 
-const COUNTRY_COORDS: Record<string, [number, number]> = {
-  'Afghanistan': [33.9, 67.7], 'Ethiopia': [9.1, 40.5],
-  'Yemen': [15.6, 48.5], 'Syria': [34.8, 38.9],
-  'Somalia': [5.2, 46.2], 'Sudan': [12.9, 30.2],
-  'South Sudan': [6.9, 31.3], 'DR Congo': [-4.0, 21.8],
-  'Democratic Republic of the Congo': [-4.0, 21.8],
-  'Haiti': [18.9, -72.3], 'Nigeria': [9.1, 8.7],
-  'Mali': [17.6, -4.0], 'Burkina Faso': [12.4, -1.5],
-  'Niger': [17.6, 8.1], 'Chad': [15.5, 18.7],
-  'Mozambique': [-18.7, 35.5], 'Zimbabwe': [-20.0, 30.0],
-  'Venezuela': [6.4, -66.6], 'Myanmar': [21.9, 96.0],
-  'Ukraine': [48.4, 31.2], 'Pakistan': [30.4, 69.3],
-  'Bangladesh': [23.7, 90.4], 'Kenya': [-0.0, 37.9],
-  'Uganda': [1.4, 32.3], 'Cameroon': [3.8, 11.5],
-  'Central African Republic': [6.6, 20.9],
-  'Libya': [26.3, 17.2], 'Lebanon': [33.9, 35.5],
-  'Iraq': [33.2, 43.7], 'Gaza': [31.4, 34.3],
-  'Philippines': [12.9, 121.8], 'Indonesia': [-0.8, 113.9],
-  'Colombia': [4.6, -74.1], 'Honduras': [15.2, -86.2],
-  'El Salvador': [13.8, -88.9], 'Guatemala': [15.8, -90.2],
-  'Cambodia': [12.6, 104.9], 'Malawi': [-13.3, 34.3],
-  'Zambia': [-13.1, 27.8], 'Tanzania': [-6.4, 34.9],
-  'Rwanda': [-1.9, 29.9], 'Burundi': [-3.4, 29.9],
-  'Eritrea': [15.2, 39.8], 'Senegal': [14.5, -14.5],
-  'Ghana': [7.9, -1.0], 'Mauritania': [21.0, -10.9],
-  'Morocco': [31.8, -7.1], 'Tunisia': [33.9, 9.5],
-  'Egypt': [26.8, 30.8], 'Jordan': [30.6, 36.2],
-  'Turkey': [38.9, 35.2], 'Iran': [32.4, 53.7],
-  'Bolivia': [-16.3, -63.6], 'Peru': [-9.2, -75.0],
-  'Ecuador': [-1.8, -78.2], 'Brazil': [-14.2, -51.9],
-  'India': [20.6, 79.0], 'Nepal': [28.4, 84.1],
-  'Sri Lanka': [7.9, 80.8], 'Tajikistan': [38.9, 71.3],
-  'South Africa': [-30.6, 22.9],
-};
-
-function findCoords(text: string): [number, number] | null {
-  const keys = Object.keys(COUNTRY_COORDS).sort((a, b) => b.length - a.length);
-  for (const k of keys) {
-    if (text.includes(k)) return COUNTRY_COORDS[k];
-  }
-  return null;
-}
-
-function hashId(s: string): string {
-  let h = 0;
-  for (let i = 0; i < Math.min(s.length, 80); i++) {
-    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h).toString(36);
-}
-
-const LABOR_KEYWORDS = /strike|protest|worker|labour|labor|wage|union|unemploy|job loss|lay.?off|displacement/i;
-const FOOD_KEYWORDS  = /food|famine|hunger|nutrition|starv|malnutrit|crop|harvest/i;
-
-function classifyEvent(title: string, tags: string[]): {
-  domain: 'economic' | 'labor';
+interface Kind {
+  domain: Domain;
   category: string;
+  label: string;
   severity: Severity;
-} {
-  const text = title + ' ' + tags.join(' ');
-  if (LABOR_KEYWORDS.test(text)) {
-    return {
-      domain: 'labor',
-      category: 'strike',
-      severity: /mass|general|national|major/i.test(text) ? 'high' : 'medium',
-    };
-  }
-  if (FOOD_KEYWORDS.test(text)) {
-    return {
-      domain: 'economic',
-      category: 'food-insecurity',
-      severity: /famine|catastroph|emergency|critical/i.test(text) ? 'critical'
-              : /severe|crisis/i.test(text) ? 'high' : 'medium',
-    };
-  }
-  return {
-    domain: 'economic',
-    category: 'housing-stress',
-    severity: /emergency|crisis|acute/i.test(text) ? 'high' : 'medium',
-  };
 }
 
-interface RWReport {
-  id: number;
-  fields: {
-    title: string;
-    date: { created: string };
-    country?: Array<{ name: string }>;
-    primary_country?: { name: string };
-    source?: Array<{ name: string }>;
-    url: string;
-    body?: string;
-    theme?: Array<{ name: string }>;
-  };
+// GLIDE hazard codes: https://glidenumber.net
+const KINDS: Record<string, Kind> = {
+  EQ: { domain: 'disaster', category: 'earthquake',      label: 'Earthquake',          severity: 'high' },
+  VO: { domain: 'disaster', category: 'volcanic',        label: 'Volcano',             severity: 'high' },
+  TS: { domain: 'disaster', category: 'tsunami',         label: 'Tsunami',             severity: 'high' },
+  TC: { domain: 'disaster', category: 'hurricane',       label: 'Tropical cyclone',    severity: 'high' },
+  FL: { domain: 'disaster', category: 'flood',           label: 'Flood',               severity: 'medium' },
+  FF: { domain: 'disaster', category: 'flood',           label: 'Flash flood',         severity: 'medium' },
+  LS: { domain: 'disaster', category: 'landslide',       label: 'Landslide',           severity: 'medium' },
+  ST: { domain: 'climate',  category: 'extreme-weather', label: 'Severe storm',        severity: 'medium' },
+  SS: { domain: 'climate',  category: 'extreme-weather', label: 'Storm surge',         severity: 'medium' },
+  ET: { domain: 'climate',  category: 'extreme-weather', label: 'Extratropical cyclone', severity: 'medium' },
+  CW: { domain: 'climate',  category: 'extreme-weather', label: 'Cold wave',           severity: 'medium' },
+  HT: { domain: 'climate',  category: 'extreme-weather', label: 'Heat wave',           severity: 'medium' },
+  DR: { domain: 'climate',  category: 'extreme-weather', label: 'Drought',             severity: 'medium' },
+  WF: { domain: 'climate',  category: 'wildfire',        label: 'Wildfire',            severity: 'medium' },
+  EP: { domain: 'health',   category: 'outbreak',        label: 'Epidemic',            severity: 'high' },
+  CE: { domain: 'conflict', category: 'displacement',    label: 'Complex emergency',   severity: 'high' },
+  FA: { domain: 'economic', category: 'food-insecurity', label: 'Famine',              severity: 'critical' },
+};
+const DEFAULT_KIND: Kind = { domain: 'disaster', category: 'other', label: 'Disaster', severity: 'medium' };
+
+/** The description is HTML-escaped HTML; unwrap it and pull out the pieces we need. */
+function parseDescription(raw: string): { countries: string; glide: string; text: string } {
+  const doc = new DOMParser().parseFromString(raw, 'text/html');
+  const countries = doc.querySelector('.tag.country')?.textContent?.replace(/^Affected countr(?:y|ies):\s*/i, '').trim() ?? '';
+  const glide = doc.querySelector('.tag.glide')?.textContent?.replace(/^Glide:\s*/i, '').trim() ?? '';
+  const text = (doc.querySelector('p')?.textContent ?? doc.body.textContent ?? '').replace(/\s+/g, ' ').trim();
+  return { countries, glide, text };
 }
 
 export async function fetchReliefWeb(): Promise<VigilEvent[]> {
-  try {
-    const res = await fetch('/api/reliefweb', {
-      headers: { 'Accept': 'application/json' },
+  const res = await fetch('/api/reliefweb');
+  if (!res.ok) throw new Error(`ReliefWeb proxy ${res.status}`);
+  const xml = new DOMParser().parseFromString(await res.text(), 'text/xml');
+  if (xml.querySelector('parsererror')) throw new Error('ReliefWeb RSS could not be parsed');
+
+  const events: VigilEvent[] = [];
+  for (const item of Array.from(xml.querySelectorAll('item'))) {
+    const title = item.querySelector('title')?.textContent?.trim();
+    const link = item.querySelector('link')?.textContent?.trim() ?? 'https://reliefweb.int';
+    const pub = item.querySelector('pubDate')?.textContent?.trim();
+    if (!title || !pub) continue;
+    const when = new Date(pub);
+    if (Number.isNaN(when.getTime())) continue;
+
+    const { countries: countryText, glide, text } = parseDescription(item.querySelector('description')?.textContent ?? '');
+    const kind = KINDS[glide.slice(0, 2).toUpperCase()] ?? DEFAULT_KIND;
+    // Prefer the structured "Affected country" field; fall back to the title ("Haiti: Floods - Oct 2026").
+    const matches = findCountries(countryText || title);
+    const primary = matches[0];
+    const names = matches.map(m => countryName(m.code));
+
+    events.push({
+      id: `reliefweb-${glide || link.split('/').pop()}`,
+      timestamp: when.toISOString(),
+      domain: kind.domain,
+      category: kind.category,
+      severity: kind.severity,
+      title,
+      description: text.length > 320 ? `${text.slice(0, 320)}…` : text || `${kind.label} reported by ReliefWeb.`,
+      location: primary
+        ? { lat: primary.coords[0], lng: primary.coords[1], country: primary.code, region: names.join(', '), label: names.join(', ') }
+        : { lat: 0, lng: 0, country: '', region: 'ReliefWeb', label: countryText || 'Location not specified' },
+      source: 'ReliefWeb',
+      sourceUrl: link,
+      confidence: 0.9,
+      tags: [kind.label.toLowerCase(), 'humanitarian', 'reliefweb'],
+      metadata: { glide, countries: names, kind: kind.label, ...(primary ? {} : { unlocated: true }) },
     });
-    if (!res.ok) throw new Error(`ReliefWeb proxy ${res.status}`);
-    const json = await res.json();
-    // The proxy reports upstream failures as a 200 with an `error` field (and empty data).
-    // Treat that as a failure, not as "no events", so the Data Health panel can say it's down.
-    if (json.error) throw new Error(String(json.error));
-    const events: VigilEvent[] = [];
-
-    for (const report of (json.data ?? []) as RWReport[]) {
-      const f = report.fields;
-      const title = f.title ?? '';
-      if (!title) continue;
-
-      const countryName =
-        f.primary_country?.name ??
-        f.country?.[0]?.name ??
-        '';
-      const coords = findCoords(countryName) ?? findCoords(title);
-      if (!coords) continue;
-      const [lat, lng] = coords;
-
-      const tags = (f.theme ?? []).map(t => t.name.toLowerCase());
-      const { domain, category, severity } = classifyEvent(title, tags);
-      const sourceName = f.source?.[0]?.name ?? 'ReliefWeb';
-
-      events.push({
-        id: `rw-${hashId(f.url ?? String(report.id))}`,
-        timestamp: f.date?.created ?? new Date().toISOString(),
-        domain,
-        category,
-        severity,
-        title: title.slice(0, 120),
-        description: (f.body ?? 'Humanitarian situation report.').slice(0, 300),
-        location: {
-          lat, lng,
-          country: countryName,
-          region: countryName,
-          label: countryName,
-        },
-        source: sourceName,
-        sourceUrl: f.url ?? 'https://reliefweb.int',
-        confidence: 0.85,
-        tags: ['humanitarian', domain, ...tags.slice(0, 4)],
-        metadata: { country: countryName },
-      });
-    }
-
-    return events;
-  } catch (err) {
-    console.warn('[ReliefWeb] failed:', err);
-    throw err; // surface it: the Data Health panel must tell "down" from "quiet"
   }
+  return events;
 }

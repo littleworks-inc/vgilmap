@@ -1,45 +1,58 @@
 /**
  * Science adapter — proxies through /api/science (Vercel edge function).
- * Normalizes NASA DONKI Solar Flares, Geomagnetic Storms, and NeoWs Asteroids.
+ * Normalizes NOAA SWPC solar flares, NASA DONKI geomagnetic storms, and NASA NeoWs asteroids.
  */
 import type { VigilEvent, Severity } from '../types';
 import { addWarning } from './source-warnings';
 
-// ── Solar Flare normalizer ─────────────────────────────────
+// ── Solar Flare normalizer (NOAA SWPC GOES X-ray flares) ───
 
-interface FLREvent {
-  flrID: string;
-  beginTime: string;
-  classType: string;
-  sourceLocation: string;
+interface SwpcFlare {
+  begin_time?: string;
+  max_time?: string;
+  begin_class?: string;
+  max_class?: string;
+  end_class?: string;
 }
 
-function flrSeverity(classType: string): Severity {
-  const c = (classType ?? '').toUpperCase();
+/**
+ * Only M- and X-class flares are reported: of ~80 flares in a typical week, most are C/B-class
+ * background noise with no practical effect. M can disturb radio on the sunlit side of Earth;
+ * strong M5+ and X-class can affect satellites and navigation.
+ */
+function flrSeverity(maxClass: string): Severity {
+  const c = maxClass.toUpperCase();
   if (c.startsWith('X')) return 'critical';
-  if (c.startsWith('M')) return 'high';
-  if (c.startsWith('C')) return 'medium';
-  if (c.startsWith('B')) return 'low';
+  if (c.startsWith('M')) return parseFloat(c.slice(1)) >= 5 ? 'high' : 'medium';
   return 'low';
 }
 
 function normalizeFLR(data: unknown): VigilEvent[] {
   if (!Array.isArray(data)) return [];
-  return (data as FLREvent[]).map(ev => ({
-    id: `science-flr-${ev.flrID}`,
-    timestamp: ev.beginTime ?? new Date().toISOString(),
-    domain: 'science',
-    category: 'research',
-    severity: flrSeverity(ev.classType),
-    title: `Solar Flare (Class ${ev.classType ?? 'Unknown'})`,
-    description: `Solar flare detected. Class: ${ev.classType}. Source location: ${ev.sourceLocation ?? 'N/A'}.`,
-    location: { lat: 0, lng: 0, country: 'Sun', region: 'Solar', label: 'Solar Activity' },
-    source: 'NASA DONKI',
-    sourceUrl: 'https://kauai.ccmc.gsfc.nasa.gov/DONKI/',
-    confidence: 0.99,
-    tags: ['solar-flare', 'space-weather', ev.classType ?? ''],
-    metadata: { classType: ev.classType, sourceLocation: ev.sourceLocation },
-  }));
+  return (data as SwpcFlare[])
+    .filter(f => /^[MX]/i.test(f.max_class ?? '') && f.max_time)
+    .map(f => {
+      const cls = f.max_class as string;
+      const peak = new Date(f.max_time as string);
+      const hhmm = peak.toISOString().slice(11, 16);
+      return {
+        id: `science-flr-${f.begin_time ?? f.max_time}`,
+        timestamp: peak.toISOString(),
+        domain: 'science' as const,
+        category: 'research',
+        severity: flrSeverity(cls),
+        title: `Solar Flare (Class ${cls})`,
+        description: `${cls}-class solar flare peaked at ${hhmm} UTC (began as ${f.begin_class ?? 'unknown'}, ended ${f.end_class ?? 'unknown'}). ${
+          cls.toUpperCase().startsWith('X') ? 'X-class flares can disrupt satellites, GPS and HF radio.' : 'M-class flares can briefly disrupt HF radio on the sunlit side of Earth.'}`,
+        // A flare happens on the Sun: there is no map location, so it's kept off the map.
+        location: { lat: 0, lng: 0, country: 'Sun', region: 'Solar', label: 'Solar Activity' },
+        source: 'NOAA SWPC',
+        sourceUrl: 'https://www.swpc.noaa.gov/products/goes-x-ray-flux',
+        confidence: 0.99,
+        tags: ['solar-flare', 'space-weather', cls],
+        metadata: { classType: cls, beginClass: f.begin_class, endClass: f.end_class, unlocated: true },
+      };
+    });
 }
 
 // ── Geomagnetic Storm normalizer ───────────────────────────
@@ -163,11 +176,13 @@ export async function fetchScience(): Promise<VigilEvent[]> {
   if (failed.length === 3) throw new Error('all NASA feeds unavailable (check NASA_API_KEY / rate limit)');
   if (failed.length > 0) addWarning('science', `NASA feed unavailable: ${failed.join(', ')}`);
 
+  // None of these happen at a place on Earth, so none belong on the map. Flag them so they stay in
+  // lists (and the Data Health counts) without being plotted at a made-up position.
   const all: VigilEvent[] = [
     ...normalizeFLR(flr),
     ...normalizeGST(gst),
     ...normalizeNeo(neo),
-  ];
+  ].map(e => ({ ...e, metadata: { ...e.metadata, unlocated: true } }));
 
   return all.sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()

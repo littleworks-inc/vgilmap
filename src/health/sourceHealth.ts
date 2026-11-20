@@ -27,6 +27,7 @@ export interface SourceHealth {
   warnings: string[];
   durationMs?: number;
   checkedAt?: number;     // epoch ms of the last completed attempt
+  startedAt?: number;     // epoch ms when the first fetch began (used to show how long it's been loading)
 }
 
 export const STATUS_META: Record<HealthStatus, { label: string; color: string; hint: string }> = {

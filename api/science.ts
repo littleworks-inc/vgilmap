@@ -25,7 +25,8 @@ export default async function handler(_req: Request): Promise<Response> {
   }
 
   const [flrRes, gstRes, neoRes] = await Promise.allSettled([
-    fetch(`https://api.nasa.gov/DONKI/FLR?startDate=${DATE_7_DAYS_AGO}&endDate=${TODAY}&api_key=${NASA_KEY}`),
+    // Flares: NASA's DONKI /FLR endpoint now returns 404, so use NOAA SWPC's GOES X-ray flare list.
+    fetch('https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json'),
     fetch(`https://api.nasa.gov/DONKI/GST?startDate=${DATE_7_DAYS_AGO}&endDate=${TODAY}&api_key=${NASA_KEY}`),
     fetch(`https://api.nasa.gov/neo/rest/v1/feed?start_date=${TODAY}&end_date=${TODAY}&api_key=${NASA_KEY}`),
   ]);

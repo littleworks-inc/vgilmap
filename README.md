@@ -17,10 +17,12 @@ VigilMap aggregates **8 real-time data sources** into a single dark-mode globe. 
 | 🌋 Earthquakes | USGS Earthquake Hazards | Every 5 min |
 | 🔥 Wildfires | NASA FIRMS (VIIRS satellite) | Every 3 hrs |
 | 🌩 Weather alerts | NOAA National Weather Service | Live |
-| ⚔️ Conflict | GDELT Doc API + BBC/DW/Guardian RSS | Every 3 min |
-| 🏥 Disease outbreaks | WHO Disease Outbreak News | Daily |
-| 💰 Economic crises | ReliefWeb (UN OCHA) | Daily |
-| ✊ Labor events | GDELT Economic news filter | Every 5 min |
+| ⚔️ Conflict | BBC / DW / Al Jazeera RSS + GDELT Doc API (when available) | Every 5 min |
+| 🏥 Disease outbreaks | WHO Disease Outbreak News API | Daily |
+| 🌍 Humanitarian disasters | ReliefWeb Disasters RSS (UN OCHA) | As declared |
+| 🔬 Space weather | NOAA SWPC solar flares (M/X class) + NASA DONKI storms + NASA NeoWs asteroids | Live |
+| 🛡️ Cyber | ransomware.live claims + CISA KEV | Every 10 min |
+| 💰 Economic & ✊ labor | BBC Business / DW / Guardian Economics / Al Jazeera / NPR RSS, filtered to crisis and labor headlines | Every 10 min |
 
 ---
 
@@ -94,9 +96,10 @@ src/
 │   ├── nasa-firms.ts            # NASA VIIRS wildfire hotspots
 │   ├── noaa.ts                  # NOAA NWS active weather alerts
 │   ├── gdelt.ts                 # Conflict: GDELT + news RSS (via edge proxies)
-│   ├── who.ts                   # WHO Disease Outbreak News RSS
-│   ├── reliefweb.ts             # ReliefWeb UN OCHA humanitarian crises
-│   └── gdelt-economic.ts        # GDELT economic/labor news filter
+│   ├── who.ts                   # WHO Disease Outbreak News API
+│   ├── reliefweb.ts             # ReliefWeb Disasters RSS (UN OCHA)
+│   ├── economic-news.ts         # Economic & labor news (RSS)
+│   └── gdelt.ts                 # Conflict: news RSS + GDELT
 ├── intelligence/
 │   └── anomaly.ts               # Welford online algorithm — no ML, pure math
 ├── components/
@@ -282,4 +285,4 @@ MIT — see [LICENSE](LICENSE).
 - NASA FIRMS: public domain (U.S. Government)
 - NOAA NWS alerts: public domain (U.S. Government)
 - GDELT: open data — [GDELT Project terms](https://www.gdeltproject.org/about.html)
-- WHO RSS feeds: © World Health Organization
+- WHO Disease Outbreak News: © World Health Organization

@@ -1,66 +1,84 @@
 /**
- * Conflict Adapter — Multi-source via Vercel edge proxies
+ * Conflict adapters — two independent sources, registered separately in App.tsx so each one
+ * loads and reports its own health:
  *
- * Source 1: GDELT Doc API  → /api/gdelt        (with retry logic)
- * Source 2: News RSS feeds → /api/conflict-rss  (BBC, DW, Guardian)
+ *   fetchConflictNews → /api/conflict-rss  BBC / DW / Al Jazeera RSS. Fast (<1 s) and reliable.
+ *   fetchGDELT        → /api/gdelt          GDELT Doc API. Slow (~13 s per request) and aggressively
+ *                                          rate limited, so it often fails.
  *
- * Both run server-side via edge functions — no CORS, no auth needed.
- * Results merge and deduplicate. Either source failing is silent.
+ * They used to be one adapter that waited for both, which meant the fast RSS events sat hidden
+ * behind GDELT's 20+ second wait.
  */
 import type { VigilEvent, Severity } from '../types';
 import { gdeltFetch, noteIfStale } from './gdelt-queue';
 import { addWarning } from './source-warnings';
+import { countryName, findCountries } from './countries';
+
 // ─── Shared helpers ────────────────────────────────────────
+
 function hashId(s: string): string {
   let h = 0;
-  for (let i = 0; i < Math.min(s.length, 80); i++) {
-    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  }
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
   return Math.abs(h).toString(36);
 }
+
 function severityFromTitle(title: string): Severity {
   const t = title.toLowerCase();
   if (/killed|dead|massacre|airstrike|bombing|explosion/.test(t)) return 'high';
   if (/attack|clash|conflict|fighting|troops|offensive/.test(t)) return 'medium';
   return 'low';
 }
+
 function seendateToISO(s: string): string {
   if (!s || s.length < 8) return new Date().toISOString();
   const d = s.replace('Z', '');
-  return `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}T` +
-    `${d.slice(9,11) || '00'}:${d.slice(11,13) || '00'}:00Z`;
+  return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T` +
+    `${d.slice(9, 11) || '00'}:${d.slice(11, 13) || '00'}:00Z`;
 }
-// ─── Country coordinate lookup ─────────────────────────────
-const COUNTRY_COORDS: Record<string, [number, number]> = {
-  'AFGHANISTAN':[33.9,67.7],'UKRAINE':[48.4,31.2],'RUSSIA':[61.5,105.3],
-  'SYRIA':[34.8,38.9],'YEMEN':[15.6,48.5],'SOMALIA':[5.2,46.2],
-  'SUDAN':[12.9,30.2],'SOUTH SUDAN':[6.9,31.3],'MYANMAR':[21.9,96.0],
-  'IRAQ':[33.2,43.7],'NIGERIA':[9.1,8.7],'ETHIOPIA':[9.1,40.5],
-  'MALI':[17.6,-4.0],'BURKINA FASO':[12.4,-1.5],'NIGER':[17.6,8.1],
-  'CHAD':[15.5,18.7],'LIBYA':[26.3,17.2],'PALESTINE':[31.9,35.2],
-  'GAZA':[31.4,34.3],'ISRAEL':[31.0,35.0],'HAITI':[18.9,-72.3],
-  'COLOMBIA':[4.6,-74.1],'VENEZUELA':[6.4,-66.6],'PAKISTAN':[30.4,69.3],
-  'INDIA':[20.6,79.0],'INDONESIA':[-0.8,113.9],'PHILIPPINES':[12.9,121.8],
-  'IRAN':[32.4,53.7],'TURKEY':[38.9,35.2],'MEXICO':[23.6,-102.5],
-  'DEMOCRATIC REPUBLIC OF THE CONGO':[-4.0,21.8],'CONGO':[-4.0,21.8],
-  'CENTRAL AFRICAN REPUBLIC':[6.6,20.9],'CAMEROON':[3.8,11.5],
-  'MOZAMBIQUE':[-18.7,35.5],'KENYA':[-0.0,37.9],'UGANDA':[1.4,32.3],
-  'SAUDI ARABIA':[23.9,45.1],'EGYPT':[26.8,30.8],'LEBANON':[33.9,35.5],
-  'SERBIA':[44.0,21.0],'KOSOVO':[42.6,20.9],'GEORGIA':[42.3,43.4],
-  'AZERBAIJAN':[40.1,47.6],'ARMENIA':[40.1,45.0],'BANGLADESH':[23.7,90.4],
-  'BRAZIL':[-14.2,-51.9],'ECUADOR':[-1.8,-78.2],'PERU':[-9.2,-75.0],
-  'HONDURAS':[15.2,-86.2],'EL SALVADOR':[13.8,-88.9],
-};
-function extractCountry(text: string): [number, number] | null {
-  const t = text.toUpperCase();
-  // Longest match first prevents "CONGO" matching before "DEMOCRATIC REPUBLIC OF THE CONGO"
-  const keys = Object.keys(COUNTRY_COORDS).sort((a, b) => b.length - a.length);
-  for (const key of keys) {
-    if (t.includes(key)) return COUNTRY_COORDS[key];
+
+/** Place a headline in the first country it names, or null (conflict events need a place). */
+function place(text: string) {
+  const m = findCountries(text)[0];
+  return m ? { lat: m.coords[0], lng: m.coords[1], country: m.code, region: '', label: countryName(m.code) } : null;
+}
+
+// ─── Source 1: news RSS ────────────────────────────────────
+
+interface NewsItem { title: string; link: string; date: string; description: string; feed: string }
+
+export async function fetchConflictNews(): Promise<VigilEvent[]> {
+  const res = await fetch('/api/conflict-rss');
+  if (!res.ok) throw new Error(`conflict-rss proxy ${res.status}`);
+  const json = (await res.json()) as { items?: NewsItem[]; feeds?: Array<{ name: string; ok: boolean }> };
+
+  const failed = (json.feeds ?? []).filter(f => !f.ok).map(f => f.name);
+  if (failed.length > 0) addWarning('conflict-rss', `${failed.join(', ')} feed unavailable`);
+
+  const events: VigilEvent[] = [];
+  for (const item of json.items ?? []) {
+    const location = place(`${item.title} ${item.description}`);
+    if (!location) continue;
+    events.push({
+      id: `news-${hashId(item.link || item.title)}`,
+      timestamp: item.date,
+      domain: 'conflict',
+      category: 'armed-conflict',
+      severity: severityFromTitle(item.title),
+      title: item.title.slice(0, 140),
+      description: item.description || 'News report.',
+      location,
+      source: item.feed,
+      sourceUrl: item.link,
+      confidence: 0.65, // headline-derived, location from the first country named
+      tags: ['conflict', 'news', 'rss'],
+      metadata: {},
+    });
   }
-  return null;
+  return events;
 }
-// ─── Source 1: GDELT via edge proxy ───────────────────────
+
+// ─── Source 2: GDELT ───────────────────────────────────────
+
 interface GDELTArticle {
   url: string;
   title: string;
@@ -68,17 +86,18 @@ interface GDELTArticle {
   domain: string;
   sourcecountry: string;
 }
-async function fromGDELT(): Promise<VigilEvent[]> {
+
+export async function fetchGDELT(): Promise<VigilEvent[]> {
   const res = await gdeltFetch('/api/gdelt');
   if (!res.ok) throw new Error(`gdelt proxy ${res.status}`);
   noteIfStale('gdelt', res);
   const json = await res.json();
+
   const events: VigilEvent[] = [];
   for (const a of (json.articles ?? []) as GDELTArticle[]) {
     if (!a.title) continue;
-    const coords = extractCountry(a.title);
-    if (!coords) continue;
-    const [lat, lng] = coords;
+    const location = place(a.title);
+    if (!location) continue;
     events.push({
       id: `gdelt-${hashId(a.url ?? a.title)}`,
       timestamp: seendateToISO(a.seendate),
@@ -87,7 +106,7 @@ async function fromGDELT(): Promise<VigilEvent[]> {
       severity: severityFromTitle(a.title),
       title: a.title,
       description: `Reported by ${a.domain ?? 'news source'}.`,
-      location: { lat, lng, country: a.sourcecountry ?? '', region: '', label: a.sourcecountry ?? '' },
+      location,
       source: 'GDELT',
       sourceUrl: a.url,
       confidence: 0.70,
@@ -96,64 +115,4 @@ async function fromGDELT(): Promise<VigilEvent[]> {
     });
   }
   return events;
-}
-// ─── Source 2: RSS feeds via edge proxy ───────────────────
-async function fromRSS(): Promise<VigilEvent[]> {
-  const res = await fetch('/api/conflict-rss');
-  if (!res.ok) throw new Error(`rss proxy ${res.status}`);
-  const json = await res.json();
-  const events: VigilEvent[] = [];
-  for (const item of json.items ?? []) {
-    if (!item.title) continue;
-    const coords = extractCountry(item.title + ' ' + (item.description ?? ''));
-    if (!coords) continue;
-    const [lat, lng] = coords;
-    events.push({
-      id: `rss-${hashId(item.link ?? item.title)}`,
-      timestamp: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
-      domain: 'conflict',
-      category: 'armed-conflict',
-      severity: severityFromTitle(item.title),
-      title: item.title.slice(0, 120),
-      description: item.description || 'News report.',
-      location: { lat, lng, country: '', region: '', label: '' },
-      source: 'News RSS',
-      sourceUrl: item.link ?? '',
-      confidence: 0.65,
-      tags: ['conflict', 'news', 'rss'],
-      metadata: {},
-    });
-  }
-  return events;
-}
-// ─── Main export ───────────────────────────────────────────
-export async function fetchGDELT(): Promise<VigilEvent[]> {
-  const [gdeltResult, rssResult] = await Promise.allSettled([
-    fromGDELT(),
-    fromRSS(),
-  ]);
-  const all: VigilEvent[] = [];
-  if (gdeltResult.status === 'fulfilled') {
-    all.push(...gdeltResult.value);
-  } else {
-    console.warn('[GDELT proxy] failed:', gdeltResult.reason?.message);
-  }
-  if (rssResult.status === 'fulfilled') {
-    all.push(...rssResult.value);
-  } else {
-    console.warn('[RSS proxy] failed:', rssResult.reason?.message);
-  }
-  // Two independent feeds: both down is a failure, one down is a degradation.
-  if (gdeltResult.status === 'rejected' && rssResult.status === 'rejected') {
-    throw new Error('GDELT and news RSS both unavailable');
-  }
-  if (gdeltResult.status === 'rejected') addWarning('gdelt', 'GDELT unavailable (showing news RSS only)');
-  if (rssResult.status === 'rejected') addWarning('gdelt', 'News RSS unavailable (showing GDELT only)');
-  // Deduplicate
-  const seen = new Set<string>();
-  return all.filter(e => {
-    if (seen.has(e.id)) return false;
-    seen.add(e.id);
-    return true;
-  });
 }
