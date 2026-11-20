@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { CyberFocus, CyberFocusDimension } from '../types';
 
 interface Trend {
   key: string;
@@ -18,7 +19,7 @@ interface TrendsResponse {
   groups?: Trend[];
 }
 
-type Tab = 'countries' | 'sectors' | 'groups';
+type Tab = CyberFocusDimension;
 
 const ACCENT = '#84cc16';
 // Below this many days of stored history the baseline is too thin to trust the ratios.
@@ -57,7 +58,12 @@ function Sparkline({ values, recentDays }: { values: number[]; recentDays: numbe
 
 // ─── Panel ─────────────────────────────────────────────────
 
-export function CyberTrendsPanel() {
+interface CyberTrendsPanelProps {
+  focus: CyberFocus | null;
+  onFocus: (focus: CyberFocus | null) => void;
+}
+
+export function CyberTrendsPanel({ focus, onFocus }: CyberTrendsPanelProps) {
   const [data, setData] = useState<TrendsResponse | null>(null);
   const [expanded, setExpanded] = useState(true);
   const [tab, setTab] = useState<Tab>('sectors');
@@ -141,12 +147,21 @@ export function CyberTrendsPanel() {
           ) : (
             rows.map(r => {
               const hot = r.score >= 4;
+              const active = focus?.dimension === tab && focus.key === r.key;
               return (
-                <div key={r.key} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '4px 0 4px 8px', borderLeft: `3px solid ${hot ? '#ef4444' : '#f97316'}`,
-                  borderBottom: '1px solid #0f172a', marginBottom: '2px',
-                }}>
+                <button
+                  key={r.key}
+                  onClick={() => onFocus(active ? null : { dimension: tab, key: r.key, label: label(tab, r.key) })}
+                  title={active ? 'Click to clear this filter' : 'Show these claims on the map'}
+                  aria-pressed={active}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    width: '100%', textAlign: 'left', cursor: 'pointer',
+                    padding: '4px 4px 4px 8px', borderLeft: `3px solid ${hot ? '#ef4444' : '#f97316'}`,
+                    borderTop: 'none', borderRight: 'none', borderBottom: '1px solid #0f172a',
+                    marginBottom: '2px', background: active ? `${ACCENT}1f` : 'transparent',
+                  }}
+                >
                   <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 600 }}>
                     {label(tab, r.key)}
                   </span>
@@ -161,7 +176,7 @@ export function CyberTrendsPanel() {
                       {r.ratio >= 10 ? `${Math.round(r.ratio)}×` : `${r.ratio.toFixed(1)}×`}
                     </span>
                   </span>
-                </div>
+                </button>
               );
             })
           )}
@@ -173,7 +188,7 @@ export function CyberTrendsPanel() {
             </div>
           )}
           <div style={{ fontSize: '9px', color: '#475569', marginTop: '6px' }}>
-            Claims posted by ransomware groups (ransomware.live); not victim-confirmed. Compared with the prior {data.window.baselineDays}-day weekly average.
+            Click a row to filter the map to its latest claims. Claims posted by ransomware groups (ransomware.live); not victim-confirmed. Compared with the prior {data.window.baselineDays}-day weekly average.
           </div>
         </div>
       )}

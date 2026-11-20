@@ -159,9 +159,6 @@ function normalizeKev(data: unknown): VigilEvent[] {
   return (data as KevEntry[]).map(v => {
     const id = `cyber-kev-${v.cveID}`;
     const ransomware = v.knownRansomwareCampaignUse === 'Known';
-    // KEV is global with no geography: scatter deterministically in the mid-Atlantic
-    // so each CVE stays individually clickable instead of stacking on one point.
-    const [dLat, dLng] = jitter(id, 24);
     return {
       id,
       timestamp: v.dateAdded ? `${v.dateAdded}T00:00:00Z` : new Date().toISOString(),
@@ -170,7 +167,8 @@ function normalizeKev(data: unknown): VigilEvent[] {
       severity: ransomware ? 'critical' : 'high',
       title: `${v.cveID}: ${v.vendorProject ?? ''} ${v.product ?? ''}`.trim(),
       description: (v.shortDescription ?? v.vulnerabilityName ?? '').slice(0, 300),
-      location: { lat: 15 + dLat, lng: -35 + dLng, country: 'Global', region: 'Cyberspace', label: 'Global (no fixed location)' },
+      // KEV is global: there is no honest map position, so it is flagged `unlocated` and kept off the map.
+      location: { lat: 0, lng: 0, country: 'Global', region: 'Cyberspace', label: 'Global — no map location' },
       source: 'CISA KEV',
       sourceUrl: `https://nvd.nist.gov/vuln/detail/${v.cveID}`,
       confidence: 0.99, // CISA only lists vulnerabilities with confirmed exploitation
@@ -180,6 +178,7 @@ function normalizeKev(data: unknown): VigilEvent[] {
         vendor: v.vendorProject,
         product: v.product,
         ransomwareUse: ransomware,
+        unlocated: true,
       },
     } satisfies VigilEvent;
   });

@@ -7,7 +7,8 @@
  */
 
 import type { Domain } from '../types';
-import { DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
+import { DOMAIN_COLORS, DOMAIN_ICONS, TIME_WINDOWS } from '../types';
+import type { TimeWindowId } from '../types';
 
 // ─── Domain display config ─────────────────────────────────
 
@@ -42,6 +43,8 @@ interface DomainFilterProps {
   onToggle: (domain: Domain) => void;
   onSelectAll: () => void;
   onClearAll: () => void;
+  timeWindow: TimeWindowId;
+  onTimeWindow: (id: TimeWindowId) => void;
 }
 
 export function DomainFilter({
@@ -50,6 +53,8 @@ export function DomainFilter({
   onToggle,
   onSelectAll,
   onClearAll,
+  timeWindow,
+  onTimeWindow,
 }: DomainFilterProps) {
   const domainsWithData = VISIBLE_DOMAINS.filter(d => (counts[d] ?? 0) > 0);
   const allActive = domainsWithData.every(d => activeDomains.has(d));
@@ -154,6 +159,37 @@ export function DomainFilter({
           </button>
         </>
       )}
+
+      {/* Time window — pushed to the right edge */}
+      <div
+        role="group"
+        aria-label="Time window"
+        style={{
+          marginLeft: 'auto', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '2px',
+          background: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', padding: '2px',
+        }}
+      >
+        <span style={{ fontSize: '10px', color: '#475569', padding: '0 6px 0 8px' }}>🕒</span>
+        {TIME_WINDOWS.map(w => {
+          const on = w.id === timeWindow;
+          return (
+            <button
+              key={w.id}
+              onClick={() => onTimeWindow(w.id)}
+              aria-pressed={on}
+              title={`Show events from the last ${w.label}`}
+              style={{
+                border: 'none', cursor: 'pointer', borderRadius: '10px',
+                padding: '3px 9px', fontSize: '11px', fontWeight: 600,
+                background: on ? '#334155' : 'transparent',
+                color: on ? '#e2e8f0' : '#64748b',
+              }}
+            >
+              {w.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

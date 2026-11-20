@@ -16,6 +16,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { VigilEvent } from '../types';
+import { isMappable } from '../types';
 import { earthquakeColor, earthquakeRadius, DOMAIN_COLORS } from '../types';
 
 // ─── constants ─────────────────────────────────────────────
@@ -49,8 +50,13 @@ const POPUP_SEVERITY_COLORS: Record<string, string> = {
   low: '#facc15', info: '#6b7280',
 };
 
+// Primary basemap: CARTO Dark Matter *vector* style (keyless, crisp at any zoom).
+// CARTO's old raster tiles now return an "API KEY REQUIRED" placeholder image, but this
+// vector style (served from Protomaps-based tiles) is still free to load.
+const PRIMARY_STYLE_URL = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+
+// Fallback basemap, used automatically if the style above fails to load:
 // Esri "World Dark Gray Base" raster tiles — no API key needed.
-// (CARTO's free public tiles now return an "API KEY REQUIRED" placeholder image.)
 // Note the {z}/{y}/{x} order, which differs from the usual {z}/{x}/{y}. Esri's terms expect
 // attribution; for heavy production traffic use an ArcGIS/MapTiler key instead.
 const MAP_STYLE: maplibregl.StyleSpecification = {
@@ -80,12 +86,15 @@ const MAP_STYLE: maplibregl.StyleSpecification = {
 
 // ─── helpers ───────────────────────────────────────────────
 
+const CYBER_WEIGHT = 0.3;     // a cyber event counts as 0.3 of another event in clusters
+const CYBER_DOT_SCALE = 0.75; // and its dot is 25% smaller
+
 function eventsToGeoJSON(
   events: VigilEvent[]
 ): GeoJSON.FeatureCollection<GeoJSON.Point> {
   return {
     type: 'FeatureCollection',
-    features: events.map(ev => ({
+    features: events.filter(isMappable).map(ev => ({
       type: 'Feature',
       geometry: {
         type: 'Point',
@@ -103,10 +112,14 @@ function eventsToGeoJSON(
           : DOMAIN_COLORS[ev.domain] ?? '#6b7280',
         radius: ev.category === 'earthquake'
           ? earthquakeRadius((ev.metadata?.magnitude as number) ?? 0)
-          : ev.severity === 'critical' ? 10
+          : (ev.severity === 'critical' ? 10
           : ev.severity === 'high' ? 8
           : ev.severity === 'medium' ? 6
-          : 5,
+          : 5) * (ev.domain === 'cyber' ? CYBER_DOT_SCALE : 1),
+        // Cyber is high-volume and only country-accurate: smaller, fainter, and it counts
+        // for less when deciding a cluster's size/colour so it can't drown other domains.
+        weight: ev.domain === 'cyber' ? CYBER_WEIGHT : 1,
+        opacity: ev.domain === 'cyber' ? 0.7 : 0.9,
         timestamp: ev.timestamp,
         description: ev.description,
         sourceUrl: ev.sourceUrl,
@@ -293,12 +306,23 @@ export function Globe({ events, onEventClick }: GlobeProps) {
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: MAP_STYLE,
+      style: PRIMARY_STYLE_URL,
       center: [0, 20],
       zoom: 1.8,
       minZoom: 1,
       maxZoom: 18,
       attributionControl: { compact: true },
+    });
+
+    // If the primary style itself fails (not just a single tile), fall back to Esri raster.
+    let mapLoaded = false;
+    let usedFallback = false;
+    map.on('error', (e: { sourceId?: string; error?: Error }) => {
+      if (!mapLoaded && !usedFallback && !e.sourceId) {
+        usedFallback = true;
+        console.warn('[map] primary style failed, using Esri fallback:', e.error);
+        map.setStyle(MAP_STYLE);
+      }
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -342,9 +366,10 @@ export function Globe({ events, onEventClick }: GlobeProps) {
 
     // ── Add source + layer when style loads ───────────────
     map.on('load', () => {
+      mapLoaded = true;
       // If style failed, fall back to OSM raster
       if (!map.getLayer('background') && !map.getSource('osm-tiles')) {
-        // Nothing special needed here — FALLBACK_STYLE handles it
+        // Nothing special needed here — the Esri fallback is applied in the error handler above
       }
 
       map.addSource(SOURCE_ID, {
@@ -362,7 +387,9 @@ export function Globe({ events, onEventClick }: GlobeProps) {
           cnt_economic: ['+', ['case', ['==', ['get', 'domain'], 'economic'], 1, 0]],
           cnt_labor:    ['+', ['case', ['==', ['get', 'domain'], 'labor'],    1, 0]],
           cnt_science:  ['+', ['case', ['==', ['get', 'domain'], 'science'],  1, 0]],
-          cnt_cyber:    ['+', ['case', ['==', ['get', 'domain'], 'cyber'],    1, 0]],
+          // Weighted so a pile of cyber claims doesn't out-vote earthquakes/conflict for colour
+          cnt_cyber:    ['+', ['case', ['==', ['get', 'domain'], 'cyber'],    CYBER_WEIGHT, 0]],
+          w:            ['+', ['get', 'weight']], // weighted size of the cluster
         },
       });
 
@@ -377,7 +404,7 @@ export function Globe({ events, onEventClick }: GlobeProps) {
           'circle-color': CLUSTER_COLOR_EXPR as maplibregl.ExpressionSpecification,
           'circle-radius': [
             'step',
-            ['get', 'point_count'],
+            ['get', 'w'],
             18,
             10, 24,
             30, 32,
@@ -396,7 +423,7 @@ export function Globe({ events, onEventClick }: GlobeProps) {
         filter: ['has', 'point_count'],
         layout: {
           'text-field': ['get', 'point_count_abbreviated'],
-          'text-font': ['Noto Sans Medium'],
+          'text-font': ['Noto Sans Regular'], // exists on both CARTO's and the fallback glyph servers
           'text-size': 12,
           'text-allow-overlap': true,
         },
@@ -416,7 +443,7 @@ export function Globe({ events, onEventClick }: GlobeProps) {
         paint: {
           'circle-color': ['get', 'color'],
           'circle-radius': ['get', 'radius'],
-          'circle-opacity': 0.9,
+          'circle-opacity': ['get', 'opacity'],
           'circle-stroke-width': 1.5,
           'circle-stroke-color': 'rgba(0,0,0,0.5)',
           // Subtle glow effect via outer ring
@@ -532,9 +559,29 @@ export function Globe({ events, onEventClick }: GlobeProps) {
     map.flyTo({ center: [lng, lat], zoom, duration: 1200, essential: true });
   }, []);
 
+  // Frame a set of points (used when drilling into a cyber trend). Handles 0/1/many points.
+  const fitPoints = useCallback((points: Array<[number, number]>) => {
+    const map = mapRef.current;
+    if (!map || points.length === 0) return;
+    (map as unknown as { _vigilResetIdle?: () => void })._vigilResetIdle?.();
+    if (points.length === 1) {
+      map.flyTo({ center: points[0], zoom: 3.5, duration: 1200, essential: true });
+      return;
+    }
+    const bounds = points.reduce(
+      (b, p) => b.extend(p),
+      new maplibregl.LngLatBounds(points[0], points[0]),
+    );
+    // maxZoom 3.5 keeps a whole country in view; claims sit at a country-centroid anyway.
+    map.fitBounds(bounds, { padding: 80, maxZoom: 3.5, duration: 1200, essential: true });
+  }, []);
+
   // Expose flyTo + resetIdle on the DOM node for parent components
   useEffect(() => {
     if (containerRef.current) {
+      (containerRef.current as HTMLElement & {
+        __fitPoints?: (points: Array<[number, number]>) => void;
+      }).__fitPoints = fitPoints;
       // @ts-ignore
       containerRef.current.__flyTo = flyTo;
       // @ts-ignore
@@ -542,7 +589,7 @@ export function Globe({ events, onEventClick }: GlobeProps) {
         (mapRef.current as any)?._vigilResetIdle?.();
       };
     }
-  }, [flyTo]);
+  }, [flyTo, fitPoints]);
 
   return (
     <div

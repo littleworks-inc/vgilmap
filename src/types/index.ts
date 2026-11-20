@@ -79,6 +79,57 @@ export interface VigilEvent {
   metadata?: Record<string, unknown>;
 }
 
+// ─── Time window ───────────────────────────────────────────
+
+/**
+ * How far back to show events. Sources mix very different ages (live earthquakes vs.
+ * multi-day ransomware claims vs. archive items years old), so everything is filtered
+ * to one window. 30d is the hard cap: anything older never appears.
+ */
+export const TIME_WINDOWS = [
+  { id: '24h', label: '24h', ms: 24 * 3_600_000 },
+  { id: '3d',  label: '3d',  ms: 3 * 24 * 3_600_000 },
+  { id: '7d',  label: '7d',  ms: 7 * 24 * 3_600_000 },
+  { id: '30d', label: '30d', ms: 30 * 24 * 3_600_000 },
+] as const;
+
+export type TimeWindowId = (typeof TIME_WINDOWS)[number]['id'];
+export const DEFAULT_TIME_WINDOW: TimeWindowId = '7d';
+
+export function timeWindowMs(id: TimeWindowId): number {
+  return TIME_WINDOWS.find(w => w.id === id)?.ms ?? TIME_WINDOWS[2].ms;
+}
+
+// ─── Map / focus helpers ───────────────────────────────────
+
+/**
+ * Events with no real-world location (e.g. CISA KEV vulnerabilities) are flagged
+ * `metadata.unlocated` by their adapter. They stay in lists but never go on the map
+ * or into geographic anomaly detection, where a fake position would mislead.
+ */
+export function isMappable(ev: VigilEvent): boolean {
+  return !ev.metadata?.unlocated;
+}
+
+/** A cyber "drill-down" chosen from the Cyber Trends panel. */
+export type CyberFocusDimension = 'countries' | 'sectors' | 'groups';
+
+export interface CyberFocus {
+  dimension: CyberFocusDimension;
+  key: string;    // ISO country code, sector name, or lowercase group name
+  label: string;  // human-readable, for the filter chip
+}
+
+export function matchesCyberFocus(ev: VigilEvent, f: CyberFocus): boolean {
+  if (ev.category !== 'ransomware') return false;
+  const m = ev.metadata ?? {};
+  switch (f.dimension) {
+    case 'countries': return String(m.countryCode ?? '') === (f.key === '??' ? '' : f.key);
+    case 'sectors':   return String(m.sector ?? 'Unknown') === f.key;
+    case 'groups':    return String(m.group ?? '').toLowerCase() === f.key;
+  }
+}
+
 // ─── Severity helpers ──────────────────────────────────────
 
 export const SEVERITY_ORDER: Record<Severity, number> = {

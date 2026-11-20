@@ -10,6 +10,7 @@ import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
 import type { AnomalySignal } from '../intelligence/anomaly';
+import type { CyberFocus } from '../types';
 interface MobileDrawerProps {
   events: VigilEvent[];
   selectedId?: string;
@@ -20,6 +21,8 @@ interface MobileDrawerProps {
   onRefresh: () => void;
   anomalySignals: AnomalySignal[];
   onSelectSignal: (signal: AnomalySignal) => void;
+  cyberFocus: CyberFocus | null;
+  onCyberFocus: (focus: CyberFocus | null) => void;
 }
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -33,7 +36,7 @@ function timeAgo(iso: string): string {
 const PEEK_H = 110;  // px visible when collapsed
 export function MobileDrawer({
   events, selectedId, loading, error, lastUpdated,
-  onSelectEvent, onRefresh, anomalySignals, onSelectSignal,
+  onSelectEvent, onRefresh, anomalySignals, onSelectSignal, cyberFocus, onCyberFocus,
 }: MobileDrawerProps) {
   const [expanded, setExpanded] = useState(false);
   const startY = useRef<number | null>(null);
@@ -145,7 +148,13 @@ export function MobileDrawer({
             setExpanded(false); // collapse drawer so map is visible
           }} />
           {/* Cyber Trends */}
-          <CyberTrendsPanel />
+          <CyberTrendsPanel
+            focus={cyberFocus}
+            onFocus={(f) => {
+              onCyberFocus(f);
+              if (f) setExpanded(false); // collapse the drawer so the filtered map is visible
+            }}
+          />
           {/* Refresh row */}
           <div style={{
             padding: '8px 16px',

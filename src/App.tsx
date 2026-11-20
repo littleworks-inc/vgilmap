@@ -28,8 +28,8 @@ import { fetchReliefWeb } from './adapters/reliefweb';
 import { fetchGDELTEconomic } from './adapters/gdelt-economic';
 import { fetchScience } from './adapters/science';
 import { fetchCyber } from './adapters/cyber';
-import type { Domain, VigilEvent } from './types';
-import { DOMAIN_ICONS, DOMAIN_COLORS } from './types';
+import type { CyberFocus, Domain, TimeWindowId, VigilEvent } from './types';
+import { DOMAIN_ICONS, DOMAIN_COLORS, DEFAULT_TIME_WINDOW, isMappable, matchesCyberFocus, timeWindowMs } from './types';
 import { detectAnomalies } from './intelligence/anomaly';
 import type { AnomalySignal } from './intelligence/anomaly';
 
@@ -252,35 +252,46 @@ export default function App() {
 
   const globeContainerRef = useRef<HTMLDivElement>(null);
   const hasDeepLinked     = useRef(false);
+  const loadRunRef        = useRef(0);
+  const [cyberFocus, setCyberFocus] = useState<CyberFocus | null>(null);
+  const [timeWindow, setTimeWindow] = useState<TimeWindowId>(DEFAULT_TIME_WINDOW);
   const isMobile = useIsMobile();
 
   // ── Fetch all adapters in parallel ──────────────────────
   const load = useCallback(async () => {
+    const runId = ++loadRunRef.current;
     setLoading(true);
     setErrors([]);
 
-    const results = await Promise.allSettled(ADAPTERS.map(a => a.fetch()));
-
-    const arrays: VigilEvent[][] = [];
+    // Render progressively: each source updates the map the moment it returns, so one
+    // slow source (GDELT can take 20s+) never blocks the fast ones (~1s).
+    const bySource: Array<VigilEvent[] | undefined> = new Array(ADAPTERS.length);
     const errs: string[] = [];
 
-    results.forEach((result, i) => {
-      if (result.status === 'fulfilled') {
-        arrays.push(result.value);
-      } else {
-        console.error(`[${ADAPTERS[i].label}] failed:`, result.reason);
-        errs.push(ADAPTERS[i].label);
-      }
-    });
+    const publish = () => {
+      const merged = mergeEvents(bySource.filter((a): a is VigilEvent[] => !!a));
+      merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setAllEvents(merged);
+      setLastUpdated(new Date());
+    };
 
-    if (errs.length) setErrors(errs);
-
-    const merged = mergeEvents(arrays);
-    merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-    setAllEvents(merged);
-    setLastUpdated(new Date());
-    setLoading(false);
+    await Promise.allSettled(
+      ADAPTERS.map(async (adapter, i) => {
+        try {
+          bySource[i] = await adapter.fetch();
+        } catch (reason) {
+          console.error(`[${adapter.label}] failed:`, reason);
+          errs.push(adapter.label);
+        }
+        if (runId !== loadRunRef.current) return; // a newer refresh superseded this one
+        if (errs.length) setErrors([...errs]);
+        publish();
+        // Overlay goes away as soon as any source has events to show.
+        if (bySource.some(a => a && a.length > 0)) setLoading(false);
+      })
+    );
+    // All sources settled: make sure the overlay is gone even if everything was empty.
+    if (runId === loadRunRef.current) setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -302,17 +313,40 @@ export default function App() {
   const clearAll  = useCallback(() => setActiveDomains(new Set()), []);
 
   // ── Derived state ────────────────────────────────────────
-  const filteredEvents = useMemo(
-    () => allEvents.filter(ev => activeDomains.has(ev.domain)),
-    [allEvents, activeDomains]
-  );
+  // Time window first: sources mix ages (live quakes, multi-day ransomware claims, even
+  // years-old archive items), so cap everything to the selected window. Measured from the
+  // last refresh time so this stays a pure function of state.
+  const windowedEvents = useMemo(() => {
+    if (!lastUpdated) return allEvents;
+    const cutoff = lastUpdated.getTime() - timeWindowMs(timeWindow);
+    return allEvents.filter(ev => new Date(ev.timestamp).getTime() >= cutoff);
+  }, [allEvents, lastUpdated, timeWindow]);
+
+  const filteredEvents = useMemo(() => {
+    const byDomain = windowedEvents.filter(ev => activeDomains.has(ev.domain));
+    // Drill-down from the Cyber Trends panel: show only the matching ransomware claims.
+    return cyberFocus ? byDomain.filter(ev => matchesCyberFocus(ev, cyberFocus)) : byDomain;
+  }, [windowedEvents, activeDomains, cyberFocus]);
+
+  // Drill-down from the Cyber Trends panel: set the filter, then frame the map on the matches.
+  const handleCyberFocus = useCallback((focus: CyberFocus | null) => {
+    setCyberFocus(focus);
+    if (!focus) return;
+    const container = globeContainerRef.current?.querySelector(
+      '[aria-label="VigilMap interactive globe"]'
+    ) as (HTMLElement & { __fitPoints?: (pts: Array<[number, number]>) => void }) | null;
+    const pts = windowedEvents
+      .filter(ev => activeDomains.has(ev.domain) && isMappable(ev) && matchesCyberFocus(ev, focus))
+      .map(ev => [ev.location.lng, ev.location.lat] as [number, number]);
+    container?.__fitPoints?.(pts);
+  }, [windowedEvents, activeDomains]);
 
   const anomalySignals = useMemo(
     () => detectAnomalies(filteredEvents),
     [filteredEvents]
   );
 
-  const domainCounts = useMemo(() => countByDomain(allEvents), [allEvents]);
+  const domainCounts = useMemo(() => countByDomain(windowedEvents), [windowedEvents]);
 
   const errorMsg = errors.length > 0 ? `${errors.join(', ')} failed` : null;
 
@@ -321,6 +355,7 @@ export default function App() {
     const container = globeContainerRef.current?.querySelector(
       '[aria-label="VigilMap interactive globe"]'
     ) as (HTMLElement & { __flyTo?: (lat: number, lng: number, zoom: number) => void }) | null;
+    if (!isMappable(ev)) return; // e.g. CISA KEV: nothing to fly to
     container?.__flyTo?.(ev.location.lat, ev.location.lng, 6);
   }, []);
 
@@ -376,6 +411,9 @@ export default function App() {
           onRefresh={load}
           anomalySignals={anomalySignals}
           onSelectSignal={handleSelectSignal}
+          cyberFocus={cyberFocus}
+          onCyberFocus={handleCyberFocus}
+          windowLabel={timeWindow}
         />
       )}
 
@@ -387,6 +425,8 @@ export default function App() {
           onToggle={toggleDomain}
           onSelectAll={selectAll}
           onClearAll={clearAll}
+          timeWindow={timeWindow}
+          onTimeWindow={setTimeWindow}
         />
 
         <div ref={globeContainerRef} style={{ flex: 1, position: 'relative' }}>
@@ -410,8 +450,32 @@ export default function App() {
             </div>
           )}
 
+          {/* Active cyber drill-down chip */}
+          {cyberFocus && (
+            <div style={{
+              position: 'absolute', top: '12px', left: '50%', transform: 'translateX(-50%)',
+              display: 'flex', alignItems: 'center', gap: '8px', zIndex: 6,
+              background: 'rgba(10,15,30,0.92)', border: `1px solid ${DOMAIN_COLORS.cyber}`,
+              borderRadius: '16px', padding: '4px 6px 4px 12px',
+              fontSize: '12px', color: '#e2e8f0', backdropFilter: 'blur(8px)',
+            }}>
+              <span>
+                {DOMAIN_ICONS.cyber} Ransomware · <strong>{cyberFocus.label}</strong>
+                <span style={{ color: '#64748b' }}> · {filteredEvents.length} latest claims</span>
+              </span>
+              <button
+                onClick={() => setCyberFocus(null)}
+                aria-label="Clear cyber filter"
+                style={{
+                  background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer',
+                  borderRadius: '10px', width: '20px', height: '20px', fontSize: '11px',
+                }}
+              >✕</button>
+            </div>
+          )}
+
           {/* Count pill — raise above drawer on mobile */}
-          <DomainCountPill events={filteredEvents} lastUpdated={lastUpdated} />
+          <DomainCountPill events={filteredEvents.filter(isMappable)} lastUpdated={lastUpdated} />
 
           {/* Live ticker — desktop only (drawer replaces it on mobile) */}
           {!isMobile && (
@@ -445,6 +509,8 @@ export default function App() {
           onRefresh={load}
           anomalySignals={anomalySignals}
           onSelectSignal={handleSelectSignal}
+          cyberFocus={cyberFocus}
+          onCyberFocus={handleCyberFocus}
         />
       )}
     </div>

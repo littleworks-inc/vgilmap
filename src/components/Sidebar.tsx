@@ -12,6 +12,7 @@ import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
 import type { AnomalySignal } from '../intelligence/anomaly';
+import type { CyberFocus } from '../types';
 
 interface SidebarProps {
   events: VigilEvent[];
@@ -23,6 +24,9 @@ interface SidebarProps {
   onRefresh: () => void;
   anomalySignals: AnomalySignal[];
   onSelectSignal: (signal: AnomalySignal) => void;
+  cyberFocus: CyberFocus | null;
+  onCyberFocus: (focus: CyberFocus | null) => void;
+  windowLabel: string;
 }
 
 /** Earthquake: coloured M-badge. Other domains: coloured dot with domain icon. */
@@ -114,6 +118,7 @@ function EventMeta({ event }: { event: VigilEvent }) {
       <span style={{ color: '#84cc16' }}>
         {[vendor, product].filter(Boolean).join(' ')}
         {Boolean(meta.ransomwareUse) && ' · ransomware-linked'}
+        <span style={{ color: '#64748b' }}> · no map location</span>
       </span>
     );
   }
@@ -182,6 +187,9 @@ export function Sidebar({
   onRefresh,
   anomalySignals,
   onSelectSignal,
+  cyberFocus,
+  onCyberFocus,
+  windowLabel,
 }: SidebarProps) {
   const [showAll, setShowAll]   = useState(false);
   const [query, setQuery]       = useState('');
@@ -275,7 +283,7 @@ export function Sidebar({
       <AnomalyPanel signals={anomalySignals} onSelectSignal={onSelectSignal} />
 
       {/* ── Cyber Trends (hidden until Redis history exists) ─── */}
-      <CyberTrendsPanel />
+      <CyberTrendsPanel focus={cyberFocus} onFocus={onCyberFocus} />
 
 
       {/* ── Status bar ──────────────────────────────────────── */}
@@ -341,7 +349,7 @@ export function Sidebar({
           }}>
             {trimmed
               ? `${matchedEvents.length} result${matchedEvents.length !== 1 ? 's' : ''}`
-              : 'Recent Events (24h)'}
+              : `Recent Events (${windowLabel})`}
           </span>
           {trimmed && (
             <button

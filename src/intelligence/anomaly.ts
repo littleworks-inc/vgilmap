@@ -10,7 +10,7 @@
  * Runs entirely in the browser on the current event array.
  */
 import type { VigilEvent, Domain } from '../types';
-import { DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
+import { DOMAIN_COLORS, DOMAIN_ICONS, isMappable } from '../types';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -139,7 +139,7 @@ export function detectAnomalies(events: VigilEvent[]): AnomalySignal[] {
   const groups = new Map<string, Map<string, VigilEvent[]>>();
 
   for (const ev of events) {
-    if (!ev.location?.lat || !ev.location?.lng) continue;
+    if (!ev.location?.lat || !ev.location?.lng || !isMappable(ev)) continue;
     const key = cellKey(ev.location.lat, ev.location.lng);
     if (!groups.has(ev.domain)) groups.set(ev.domain, new Map());
     const domainMap = groups.get(ev.domain)!;
