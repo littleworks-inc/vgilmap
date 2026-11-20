@@ -13,6 +13,7 @@ import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
 import { DataHealthPanel } from './DataHealthPanel';
 import type { SourceHealth } from '../health/sourceHealth';
+import type { Domain } from '../types';
 import type { AnomalySignal } from '../intelligence/anomaly';
 import type { CyberFocus } from '../types';
 
@@ -30,6 +31,8 @@ interface SidebarProps {
   onCyberFocus: (focus: CyberFocus | null) => void;
   windowLabel: string;
   sourceHealth: SourceHealth[];
+  viewCounts: Record<string, number>;
+  activeDomains: Set<Domain>;
 }
 
 /** Earthquake: coloured M-badge. Other domains: coloured dot with domain icon. */
@@ -206,6 +209,8 @@ export function Sidebar({
   onCyberFocus,
   windowLabel,
   sourceHealth,
+  viewCounts,
+  activeDomains,
 }: SidebarProps) {
   const [showAll, setShowAll]   = useState(false);
   const [query, setQuery]       = useState('');
@@ -308,7 +313,7 @@ export function Sidebar({
       <CyberTrendsPanel focus={cyberFocus} onFocus={onCyberFocus} />
 
       {/* ── Data Health: which sources are live / stale / down ── */}
-      <DataHealthPanel sources={sourceHealth} />
+      <DataHealthPanel sources={sourceHealth} viewCounts={viewCounts} activeDomains={activeDomains} />
       </div>
 
 

@@ -131,10 +131,16 @@ function DomainCountPill({
   events: VigilEvent[];
   lastUpdated: Date | null;
 }) {
-  const counts = useMemo(() => countByDomain(events), [events]);
-  const active = (Object.entries(counts) as [Domain, number][])
+  // `events` is everything currently in view (same set the top chips count). The legend shows how
+  // many of those are actually plotted: events with no real location (CISA KEV, solar flares,
+  // regional WHO notices, most breach/news items) are list-only, so "of N" explains the gap.
+  const totals = useMemo(() => countByDomain(events), [events]);
+  const onMap = useMemo(() => countByDomain(events.filter(isMappable)), [events]);
+  const counts = onMap;
+  const hasListOnly = (Object.keys(totals) as Domain[]).some(d => (totals[d] ?? 0) > (onMap[d] ?? 0));
+  const active = (Object.entries(totals) as [Domain, number][])
     .filter(([, n]) => n > 0)
-    .sort((a, b) => b[1] - a[1]);
+    .sort((a, b) => (onMap[b[0]] ?? 0) - (onMap[a[0]] ?? 0) || b[1] - a[1]);
   if (active.length === 0) return null;
   return (
     <div
@@ -149,6 +155,7 @@ function DomainCountPill({
         zIndex: 5,
         pointerEvents: 'none',
         minWidth: '160px',
+        maxWidth: '210px', // the footnote must wrap, not stretch the legend across the map
         overflow: 'hidden',
       }}
     >
@@ -166,7 +173,9 @@ function DomainCountPill({
       </div>
       {/* ── Domain rows ── */}
       <div style={{ padding: '6px 0' }}>
-        {active.map(([domain, count]) => (
+        {active.map(([domain, total]) => {
+          const count = onMap[domain] ?? 0;
+          return (
           <div key={domain} style={{
             display: 'flex',
             alignItems: 'center',
@@ -194,9 +203,16 @@ function DomainCountPill({
               fontVariantNumeric: 'tabular-nums',
             }}>
               <AnimatedCount value={count} />
+              {total > count && <span style={{ color: '#7d8ba1', fontWeight: 500 }}> of {total}</span>}
             </span>
           </div>
-        ))}
+          );
+        })}
+        {hasListOnly && (
+          <div style={{ padding: '4px 12px 0', fontSize: '9px', color: '#7d8ba1', lineHeight: 1.35 }}>
+            “of N” = total in view; the rest have no map location and appear in the list only.
+          </div>
+        )}
       </div>
       {/* ── Earthquake magnitude sub-legend ── */}
       {(counts['disaster'] ?? 0) > 0 && (
@@ -275,6 +291,8 @@ export default function App() {
     })),
   );
   const lastOkRef = useRef<Map<string, number>>(new Map());
+  // Which events each source returned, so Data Health can show how many are in the current view.
+  const [sourceIds, setSourceIds] = useState<Record<string, string[]>>({});
   const isMobile = useIsMobile();
 
   // ── Fetch all adapters in parallel ──────────────────────
@@ -303,6 +321,7 @@ export default function App() {
         try {
           const events = await adapter.fetch();
           bySource[i] = events;
+          if (runId === loadRunRef.current) setSourceIds(prev => ({ ...prev, [adapter.key]: events.map(e => e.id) }));
           const now = Date.now();
           const warnings = getWarnings(adapter.key);
           const { status, newestAt } = classify(events, adapter.staleAfterHours, warnings, now);
@@ -385,6 +404,15 @@ export default function App() {
 
   const domainCounts = useMemo(() => countByDomain(windowedEvents), [windowedEvents]);
 
+  // Per-source count of events that are in the current view (time window + selected domains),
+  // so the Data Health panel agrees with the chips and the list instead of showing all-time totals.
+  const viewCounts = useMemo(() => {
+    const inView = new Set(filteredEvents.map(e => e.id));
+    const out: Record<string, number> = {};
+    for (const [key, ids] of Object.entries(sourceIds)) out[key] = ids.reduce((n, id) => n + (inView.has(id) ? 1 : 0), 0);
+    return out;
+  }, [filteredEvents, sourceIds]);
+
   const errorMsg = errors.length > 0 ? `${errors.join(', ')} failed` : null;
 
   // ── Fly to event ─────────────────────────────────────────
@@ -452,6 +480,8 @@ export default function App() {
           onCyberFocus={handleCyberFocus}
           windowLabel={timeWindow}
           sourceHealth={sourceHealth}
+          viewCounts={viewCounts}
+          activeDomains={activeDomains}
         />
       )}
 
@@ -513,7 +543,7 @@ export default function App() {
           )}
 
           {/* Count pill — raise above drawer on mobile */}
-          <DomainCountPill events={filteredEvents.filter(isMappable)} lastUpdated={lastUpdated} />
+          <DomainCountPill events={filteredEvents} lastUpdated={lastUpdated} />
 
           {/* Live ticker — desktop only (drawer replaces it on mobile) */}
           {!isMobile && (
@@ -550,6 +580,8 @@ export default function App() {
           cyberFocus={cyberFocus}
           onCyberFocus={handleCyberFocus}
           sourceHealth={sourceHealth}
+          viewCounts={viewCounts}
+          activeDomains={activeDomains}
         />
       )}
     </div>

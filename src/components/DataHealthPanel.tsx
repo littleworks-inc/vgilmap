@@ -3,6 +3,7 @@ import { usePersistedBool } from '../hooks/usePersistedBool';
 import { DOMAIN_COLORS } from '../types';
 import { STATUS_META, ago, summarize } from '../health/sourceHealth';
 import type { SourceHealth } from '../health/sourceHealth';
+import type { Domain } from '../types';
 
 /**
  * Shows, per data source, whether it is live, partial, stale, empty or down — so a quiet map
@@ -12,7 +13,15 @@ import type { SourceHealth } from '../health/sourceHealth';
 /** A source still loading after this long is called out as slow instead of showing a bare spinner. */
 const SLOW_AFTER_S = 15;
 
-export function DataHealthPanel({ sources }: { sources: SourceHealth[] }) {
+interface DataHealthPanelProps {
+  sources: SourceHealth[];
+  /** Events per source in the CURRENT view (time window + selected domains), keyed by source key. */
+  viewCounts: Record<string, number>;
+  /** Domains currently switched on in the top filter bar. */
+  activeDomains: Set<Domain>;
+}
+
+export function DataHealthPanel({ sources, viewCounts, activeDomains }: DataHealthPanelProps) {
   const [expanded, setExpanded] = usePersistedBool('vigil.health.open', false);
 
   // Re-render so "3m ago" stays honest: every 30s normally, every second while a source is
@@ -80,11 +89,13 @@ export function DataHealthPanel({ sources }: { sources: SourceHealth[] }) {
                 ? `last had data ${ago(now - s.lastOkAt)}`
                 : null;
 
+            const hidden = !activeDomains.has(s.domain); // its domain is switched off in the top filter bar
+            const inView = viewCounts[s.key] ?? 0;
             return (
               <div
                 key={s.key}
-                title={`${meta.label}: ${meta.hint}${s.durationMs != null ? ` · responded in ${(s.durationMs / 1000).toFixed(1)}s` : ''}`}
-                style={{ padding: '5px 0 5px 8px', borderLeft: `3px solid ${meta.color}`, borderBottom: '1px solid #0f172a', marginBottom: '2px' }}
+                title={`${meta.label}: ${meta.hint} · ${s.count} returned in total (all ages), ${inView} in the current view${hidden ? ' (domain hidden)' : ''}${s.durationMs != null ? ` · responded in ${(s.durationMs / 1000).toFixed(1)}s` : ''}`}
+                style={{ padding: '5px 0 5px 8px', borderLeft: `3px solid ${meta.color}`, borderBottom: '1px solid #0f172a', marginBottom: '2px', opacity: hidden ? 0.45 : 1 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
@@ -93,7 +104,7 @@ export function DataHealthPanel({ sources }: { sources: SourceHealth[] }) {
                   </span>
                   <span style={{ fontSize: '11px', color: '#8a99ae', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     {s.status === 'ok' || s.status === 'degraded' || s.status === 'stale'
-                      ? <>{s.count}{s.newestAt ? <span> · {ago(now - new Date(s.newestAt).getTime())}</span> : null}</>
+                      ? <>{hidden ? 'hidden' : inView}{s.newestAt ? <span> · {ago(now - new Date(s.newestAt).getTime())}</span> : null}</>
                       : null}
                     <span style={{
                       fontSize: '10px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px',
@@ -112,8 +123,9 @@ export function DataHealthPanel({ sources }: { sources: SourceHealth[] }) {
             );
           })}
           <div style={{ fontSize: '9px', color: '#7d8ba1', marginTop: '6px', lineHeight: 1.4 }}>
-            Counts are events returned by each source (all ages). “Down” means the request failed;
-            “No data” means it succeeded but returned nothing; “Stale” means only old events came back.
+            Counts are events from each source in the current view (time window and selected domains);
+            hover a row for its all-age total. “Down” means the request failed; “No data” means it
+            succeeded but returned nothing; “Stale” means only old events came back.
           </div>
         </div>
       )}
