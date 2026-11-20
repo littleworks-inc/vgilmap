@@ -10,6 +10,7 @@ import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
 import { DataHealthPanel } from './DataHealthPanel';
+import { SourceLink } from './SourceLink';
 import type { SourceHealth } from '../health/sourceHealth';
 import type { Domain } from '../types';
 import type { AnomalySignal } from '../intelligence/anomaly';
@@ -45,6 +46,7 @@ export function MobileDrawer({
   onSelectEvent, onRefresh, anomalySignals, onSelectSignal, cyberFocus, onCyberFocus, sourceHealth, viewCounts, activeDomains,
 }: MobileDrawerProps) {
   const [expanded, setExpanded] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null); // which no-location row is opened
   const startY = useRef<number | null>(null);
   // Touch drag to open/close
   const onTouchStart = (e: React.TouchEvent) => {
@@ -190,12 +192,26 @@ export function MobileDrawer({
             const isSelected = ev.id === selectedId;
             const color = DOMAIN_COLORS[ev.domain] ?? '#6b7280';
             const icon = DOMAIN_ICONS[ev.domain] ?? '🌐';
+            const unmapped = !isMappable(ev);
+            const opened = unmapped && openId === ev.id;
             return (
-              <button
+              <div
                 key={ev.id}
+                role="button"
+                tabIndex={0}
+                aria-expanded={unmapped ? opened : undefined}
                 onClick={() => {
                   onSelectEvent(ev);
-                  setExpanded(false); // collapse so map flies into view
+                  if (unmapped) {
+                    // Nothing to fly to, so collapsing the drawer would reveal an empty spot on the
+                    // map. Open the event's details here instead.
+                    setOpenId(opened ? null : ev.id);
+                  } else {
+                    setExpanded(false); // collapse so the map flies into view
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); (e.currentTarget as HTMLElement).click(); }
                 }}
                 style={{
                   width: '100%', textAlign: 'left',
@@ -212,14 +228,32 @@ export function MobileDrawer({
                 <div style={{ minWidth: 0 }}>
                   <div style={{
                     fontSize: '13px', fontWeight: 500, color: '#e2e8f0',
-                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    whiteSpace: opened ? 'normal' : 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                   }}>
                     {ev.category === 'earthquake' ? ev.location.label : ev.title}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#8a99ae', marginTop: '2px' }}>
-                    {timeAgo(ev.timestamp)}
-                    {isMappable(ev) ? (ev.location.label && ` · ${ev.location.label}`) : ` · ${NO_MAP_LOCATION}`}
+                  <div style={{ fontSize: '11px', color: '#8a99ae', marginTop: '2px', display: 'flex', flexWrap: 'wrap', gap: '4px 8px', alignItems: 'center' }}>
+                    <span>
+                      {timeAgo(ev.timestamp)}
+                      {isMappable(ev) ? (ev.location.label && ` · ${ev.location.label}`) : ` · ${NO_MAP_LOCATION}`}
+                    </span>
+                    <SourceLink event={ev} />
+                    {unmapped && <span aria-hidden style={{ color: '#7d8ba1' }}>{opened ? 'details ▴' : 'details ▾'}</span>}
                   </div>
+
+                  {/* What the event is about, for events that have no map popup to show it */}
+                  {opened && (
+                    <div style={{ marginTop: '8px', fontSize: '12px', color: '#cbd5e1', lineHeight: 1.45, whiteSpace: 'normal', cursor: 'default' }}
+                         onClick={e => e.stopPropagation()}>
+                      <div>{ev.description}</div>
+                      <div style={{ marginTop: '6px', fontSize: '11px', color: '#8a99ae' }}>
+                        {ev.source} · {new Date(ev.timestamp).toLocaleString()}
+                      </div>
+                      <div style={{ marginTop: '8px', fontSize: '13px' }}>
+                        <SourceLink event={ev} label={`Read the report on ${ev.source} ↗`} />
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <span style={{
                   flexShrink: 0, fontSize: '10px', fontWeight: 700,
@@ -229,7 +263,7 @@ export function MobileDrawer({
                 }}>
                   {ev.severity}
                 </span>
-              </button>
+              </div>
             );
           })}
           {error && (

@@ -8,7 +8,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { VigilEvent } from '../types';
 import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS, isMappable, NO_MAP_LOCATION } from '../types';
-import { safeHttpUrl } from '../utils/html';
+import { SourceLink } from './SourceLink';
 import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
@@ -191,29 +191,6 @@ function ShareButton({ eventId }: { eventId: string }) {
     >
       {copied ? '✓' : '⎘'}
     </button>
-  );
-}
-
-/**
- * Link to the original report. An event with no map location never gets a map popup, so this link
- * (and the summary shown when its row is opened) is the only way to reach what the event is about.
- * Only http(s) URLs are linked.
- */
-function SourceLink({ event, label }: { event: VigilEvent; label?: string }) {
-  const href = safeHttpUrl(event.sourceUrl);
-  if (!href) return null;
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={`Open the original report on ${event.source}`}
-      onClick={e => e.stopPropagation()}
-      onKeyDown={e => e.stopPropagation()}
-      style={{ color: '#60a5fa', textDecoration: 'none', whiteSpace: 'nowrap' }}
-    >
-      {label ?? 'source ↗'}
-    </a>
   );
 }
 
