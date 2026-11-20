@@ -14,6 +14,7 @@ const CORS = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/
 const RECENT_DAYS = 7;
 const BASELINE_DAYS = 90;
 const MIN_RECENT = 3;
+const MIN_SCORE = 1.5;
 const TOP_N = 10;
 
 interface Trend {
@@ -53,6 +54,7 @@ function trends(
         score: Math.round(((r - expected) / Math.sqrt(expected + 1)) * 10) / 10,
       };
     })
+    .filter(t => t.score >= MIN_SCORE) // only genuinely elevated, never at/below baseline
     .sort((a, b) => b.score - a.score)
     .slice(0, TOP_N);
 }

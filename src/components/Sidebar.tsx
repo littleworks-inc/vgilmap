@@ -10,6 +10,7 @@ import type { VigilEvent } from '../types';
 import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
 import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
+import { CyberTrendsPanel } from './CyberTrendsPanel';
 import type { AnomalySignal } from '../intelligence/anomaly';
 
 interface SidebarProps {
@@ -272,6 +273,9 @@ export function Sidebar({
 
       {/* ── Anomaly Signals ──────────────────────────────────── */}
       <AnomalyPanel signals={anomalySignals} onSelectSignal={onSelectSignal} />
+
+      {/* ── Cyber Trends (hidden until Redis history exists) ─── */}
+      <CyberTrendsPanel />
 
 
       {/* ── Status bar ──────────────────────────────────────── */}

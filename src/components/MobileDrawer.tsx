@@ -8,6 +8,7 @@ import type { VigilEvent } from '../types';
 import { DOMAIN_COLORS, DOMAIN_ICONS } from '../types';
 import { IntelBrief } from './IntelBrief';
 import { AnomalyPanel } from './AnomalyPanel';
+import { CyberTrendsPanel } from './CyberTrendsPanel';
 import type { AnomalySignal } from '../intelligence/anomaly';
 interface MobileDrawerProps {
   events: VigilEvent[];
@@ -143,6 +144,8 @@ export function MobileDrawer({
             onSelectSignal(sig);
             setExpanded(false); // collapse drawer so map is visible
           }} />
+          {/* Cyber Trends */}
+          <CyberTrendsPanel />
           {/* Refresh row */}
           <div style={{
             padding: '8px 16px',
