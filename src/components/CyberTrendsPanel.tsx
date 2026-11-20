@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { usePersistedBool } from '../hooks/usePersistedBool';
 import type { CyberFocus, CyberFocusDimension } from '../types';
 
 interface Trend {
@@ -65,7 +66,7 @@ interface CyberTrendsPanelProps {
 
 export function CyberTrendsPanel({ focus, onFocus }: CyberTrendsPanelProps) {
   const [data, setData] = useState<TrendsResponse | null>(null);
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = usePersistedBool('vigil.cybertrends.open', false);
   const [tab, setTab] = useState<Tab>('sectors');
 
   useEffect(() => {
@@ -105,19 +106,19 @@ export function CyberTrendsPanel({ focus, onFocus }: CyberTrendsPanelProps) {
         <span style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
           🛡️ Cyber Trends
           <span style={{
-            background: '#1e293b', border: '1px solid #334155', color: '#64748b',
+            background: '#1e293b', border: '1px solid #334155', color: '#8a99ae',
             borderRadius: '10px', padding: '0 6px', fontSize: '10px',
           }}>
             {total7} claims / 7d
           </span>
         </span>
-        <span style={{ fontSize: '10px', color: '#475569' }}>{expanded ? '▲' : '▼'}</span>
+        <span style={{ fontSize: '10px', color: '#7d8ba1' }}>{expanded ? '▲' : '▼'}</span>
       </div>
 
       {expanded && (
         <div style={{ padding: '0 12px 8px' }}>
           {data.daily && <Sparkline values={data.daily.map(d => d.total)} recentDays={data.window.recentDays} />}
-          <div style={{ fontSize: '9px', color: '#475569', display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+          <div style={{ fontSize: '9px', color: '#7d8ba1', display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
             <span>{data.window.recentDays + data.window.baselineDays}d history</span>
             <span>last {data.window.recentDays}d shaded</span>
           </div>
@@ -141,7 +142,7 @@ export function CyberTrendsPanel({ focus, onFocus }: CyberTrendsPanelProps) {
           </div>
 
           {rows.length === 0 ? (
-            <div style={{ fontSize: '11px', color: '#64748b', padding: '4px 0' }}>
+            <div style={{ fontSize: '11px', color: '#8a99ae', padding: '4px 0' }}>
               Nothing running above its normal level.
             </div>
           ) : (
@@ -165,7 +166,7 @@ export function CyberTrendsPanel({ focus, onFocus }: CyberTrendsPanelProps) {
                   <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 600 }}>
                     {label(tab, r.key)}
                   </span>
-                  <span style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', color: '#8a99ae', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {r.recent} vs ~{r.expected} typical
                     <span style={{
                       fontSize: '10px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px',
@@ -187,7 +188,7 @@ export function CyberTrendsPanel({ focus, onFocus }: CyberTrendsPanelProps) {
               backfill covers ~{MIN_RELIABLE_DAYS}+ days.
             </div>
           )}
-          <div style={{ fontSize: '9px', color: '#475569', marginTop: '6px' }}>
+          <div style={{ fontSize: '9px', color: '#7d8ba1', marginTop: '6px' }}>
             Click a row to filter the map to its latest claims. Claims posted by ransomware groups (ransomware.live); not victim-confirmed. Compared with the prior {data.window.baselineDays}-day weekly average.
           </div>
         </div>

@@ -219,7 +219,7 @@ function DomainCountPill({
                 flexShrink: 0,
                 boxShadow: `0 0 4px ${color}88`,
               }} />
-              <span style={{ fontSize: '11px', color: '#64748b' }}>{label}</span>
+              <span style={{ fontSize: '11px', color: '#8a99ae' }}>{label}</span>
             </div>
           ))}
         </div>
@@ -443,7 +443,7 @@ export default function App() {
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '36px', marginBottom: '10px' }}>🌍</div>
                 <div>Loading global intelligence data…</div>
-                <div style={{ fontSize: '11px', color: '#475569', marginTop: '6px' }}>
+                <div style={{ fontSize: '11px', color: '#7d8ba1', marginTop: '6px' }}>
                   USGS · NASA FIRMS · NOAA · GDELT · WHO · ReliefWeb · NASA DONKI · ransomware.live · CISA KEV
                 </div>
               </div>
@@ -461,7 +461,7 @@ export default function App() {
             }}>
               <span>
                 {DOMAIN_ICONS.cyber} Ransomware · <strong>{cyberFocus.label}</strong>
-                <span style={{ color: '#64748b' }}> · {filteredEvents.length} latest claims</span>
+                <span style={{ color: '#8a99ae' }}> · {filteredEvents.length} latest claims</span>
               </span>
               <button
                 onClick={() => setCyberFocus(null)}

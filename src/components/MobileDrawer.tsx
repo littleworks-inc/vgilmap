@@ -97,7 +97,7 @@ export function MobileDrawer({
               <div style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9' }}>
                 VigilMap
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b' }}>
+              <div style={{ fontSize: '11px', color: '#8a99ae' }}>
                 {loading ? 'Loading…' : `${events.length} events`}
                 {lastUpdated && !loading && (
                   <span> · {timeAgo(lastUpdated.toISOString())}</span>
@@ -129,7 +129,7 @@ export function MobileDrawer({
             </div>
             {/* Chevron */}
             <span style={{
-              fontSize: '12px', color: '#475569',
+              fontSize: '12px', color: '#7d8ba1',
               transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
               transition: 'transform 0.3s',
               display: 'inline-block',
@@ -162,7 +162,7 @@ export function MobileDrawer({
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           }}>
             <span style={{ fontSize: '11px', fontWeight: 600,
-              textTransform: 'uppercase', letterSpacing: '0.1em', color: '#475569' }}>
+              textTransform: 'uppercase', letterSpacing: '0.1em', color: '#7d8ba1' }}>
               Recent Events
             </span>
             <button
@@ -208,7 +208,7 @@ export function MobileDrawer({
                   }}>
                     {ev.category === 'earthquake' ? ev.location.label : ev.title}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                  <div style={{ fontSize: '11px', color: '#8a99ae', marginTop: '2px' }}>
                     {timeAgo(ev.timestamp)}
                     {ev.location.label && ` · ${ev.location.label}`}
                   </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { usePersistedBool } from '../hooks/usePersistedBool';
 import type { AnomalySignal } from '../intelligence/anomaly';
 import { DOMAIN_COLORS } from '../intelligence/anomaly';
 
@@ -20,7 +20,8 @@ const SEV_ICON = {
 };
 
 export function AnomalyPanel({ signals, onSelectSignal }: AnomalyPanelProps) {
-  const [expanded, setExpanded] = useState(true);
+  // Collapsed by default so the event list gets the vertical space; the header still shows the count.
+  const [expanded, setExpanded] = usePersistedBool('vigil.anomaly.open', false);
 
   if (signals.length === 0) return null;
 
@@ -64,7 +65,7 @@ export function AnomalyPanel({ signals, onSelectSignal }: AnomalyPanelProps) {
             <span style={{
               background: '#1e293b',
               border: '1px solid #334155',
-              color: '#64748b',
+              color: '#8a99ae',
               borderRadius: '10px',
               padding: '0 6px',
               fontSize: '10px',
@@ -73,7 +74,7 @@ export function AnomalyPanel({ signals, onSelectSignal }: AnomalyPanelProps) {
             </span>
           )}
         </span>
-        <span style={{ fontSize: '10px', color: '#475569' }}>
+        <span style={{ fontSize: '10px', color: '#7d8ba1' }}>
           {expanded ? '▲' : '▼'}
         </span>
       </div>
@@ -125,7 +126,7 @@ export function AnomalyPanel({ signals, onSelectSignal }: AnomalyPanelProps) {
                   </span>
                 </div>
                 <div style={{
-                  fontSize: '11px', color: '#64748b',
+                  fontSize: '11px', color: '#8a99ae',
                   marginTop: '2px', display: 'flex',
                   alignItems: 'center', gap: '6px',
                 }}>

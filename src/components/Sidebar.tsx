@@ -118,7 +118,7 @@ function EventMeta({ event }: { event: VigilEvent }) {
       <span style={{ color: '#84cc16' }}>
         {[vendor, product].filter(Boolean).join(' ')}
         {Boolean(meta.ransomwareUse) && ' · ransomware-linked'}
-        <span style={{ color: '#64748b' }}> · no map location</span>
+        <span style={{ color: '#8a99ae' }}> · no map location</span>
       </span>
     );
   }
@@ -269,7 +269,7 @@ export function Sidebar({
             >
               VigilMap
             </h1>
-            <p style={{ margin: 0, fontSize: '11px', color: '#64748b' }}>
+            <p style={{ margin: 0, fontSize: '11px', color: '#8a99ae' }}>
               Global Intelligence Platform
             </p>
           </div>
@@ -295,7 +295,7 @@ export function Sidebar({
           justifyContent: 'space-between',
           alignItems: 'center',
           fontSize: '12px',
-          color: '#64748b',
+          color: '#8a99ae',
         }}
       >
         <span>
@@ -345,7 +345,7 @@ export function Sidebar({
             fontWeight: 600,
             textTransform: 'uppercase' as const,
             letterSpacing: '0.1em',
-            color: '#475569',
+            color: '#7d8ba1',
           }}>
             {trimmed
               ? `${matchedEvents.length} result${matchedEvents.length !== 1 ? 's' : ''}`
@@ -356,7 +356,7 @@ export function Sidebar({
               onClick={() => setQuery('')}
               style={{
                 background: 'none', border: 'none',
-                color: '#475569', cursor: 'pointer',
+                color: '#7d8ba1', cursor: 'pointer',
                 fontSize: '11px', padding: '0',
               }}
             >
@@ -407,7 +407,7 @@ export function Sidebar({
                 transform: 'translateY(-50%)',
                 background: 'none',
                 border: 'none',
-                color: '#475569',
+                color: '#7d8ba1',
                 cursor: 'pointer',
                 fontSize: '14px',
                 lineHeight: 1,
@@ -427,7 +427,7 @@ export function Sidebar({
             style={{
               padding: '24px 16px',
               textAlign: 'center',
-              color: '#475569',
+              color: '#7d8ba1',
               fontSize: '13px',
             }}
           >
@@ -439,7 +439,7 @@ export function Sidebar({
           <div style={{
             padding: '24px 16px',
             textAlign: 'center',
-            color: '#475569',
+            color: '#7d8ba1',
             fontSize: '13px',
           }}>
             <div style={{ fontSize: '24px', marginBottom: '8px' }}>🔍</div>
@@ -543,7 +543,7 @@ export function Sidebar({
                 <div
                   style={{
                     fontSize: '11px',
-                    color: '#64748b',
+                    color: '#8a99ae',
                     marginTop: '2px',
                     display: 'flex',
                     gap: '8px',
@@ -571,7 +571,7 @@ export function Sidebar({
             background: 'none',
             border: 'none',
             borderTop: '1px solid #1e293b',
-            color: '#475569',
+            color: '#7d8ba1',
             fontSize: '12px',
             cursor: 'pointer',
             transition: 'color 0.15s',

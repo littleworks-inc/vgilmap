@@ -149,7 +149,7 @@ export function DomainFilter({
             style={{
               ...pillBase,
               background: 'transparent',
-              color: '#475569',
+              color: '#7d8ba1',
               border: '1px solid transparent',
               fontSize: '11px',
               padding: '3px 8px',
@@ -169,7 +169,7 @@ export function DomainFilter({
           background: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', padding: '2px',
         }}
       >
-        <span style={{ fontSize: '10px', color: '#475569', padding: '0 6px 0 8px' }}>🕒</span>
+        <span style={{ fontSize: '10px', color: '#8a99ae', padding: '0 6px 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Last</span>
         {TIME_WINDOWS.map(w => {
           const on = w.id === timeWindow;
           return (

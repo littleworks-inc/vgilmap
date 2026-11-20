@@ -117,7 +117,7 @@ export function LiveTicker({ events, onSelectEvent }: Props) {
         {/* Location */}
         {ev.location.label && (
           <span style={{
-            fontSize: '11px', color: '#64748b',
+            fontSize: '11px', color: '#8a99ae',
             whiteSpace: 'nowrap', flexShrink: 0,
           }}>
             — {ev.location.label}
@@ -129,7 +129,7 @@ export function LiveTicker({ events, onSelectEvent }: Props) {
         display: 'flex', alignItems: 'center', gap: '10px',
         flexShrink: 0,
       }}>
-        <span style={{ fontSize: '11px', color: '#475569', fontFamily: 'monospace' }}>
+        <span style={{ fontSize: '11px', color: '#7d8ba1', fontFamily: 'monospace' }}>
           {ageLabel}
         </span>
         <span style={{ fontSize: '11px', color: '#334155' }}>

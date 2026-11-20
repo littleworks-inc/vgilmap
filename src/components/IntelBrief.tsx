@@ -172,7 +172,7 @@ export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
                 borderRadius: '10px',
                 background: '#0f172a',
                 border: '1px solid #1e293b',
-                color: '#475569',
+                color: '#7d8ba1',
                 fontWeight: 400,
               }}
             >
@@ -217,7 +217,7 @@ export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
             <div
               style={{
                 padding: '10px 0',
-                color: '#475569',
+                color: '#7d8ba1',
                 fontStyle: 'italic',
                 animation: 'pulse 1.5s ease-in-out infinite',
               }}

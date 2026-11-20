@@ -307,8 +307,8 @@ export function Globe({ events, onEventClick }: GlobeProps) {
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: PRIMARY_STYLE_URL,
-      center: [0, 20],
-      zoom: 1.8,
+      center: [10, 20],
+      zoom: 2.1, // sized so the globe fills the map pane's height
       minZoom: 1,
       maxZoom: 18,
       attributionControl: { compact: true },
@@ -329,6 +329,16 @@ export function Globe({ events, onEventClick }: GlobeProps) {
     // style swap above (setStyle resets the projection to the style's own).
     map.on('style.load', () => {
       map.setProjection({ type: 'globe' });
+      // Soft blue atmosphere so the sphere's edge reads against the dark page.
+      map.setSky({
+        'sky-color': '#0a0f1e',
+        'horizon-color': '#1d4ed8',
+        'fog-color': '#0a0f1e',
+        'sky-horizon-blend': 0.6,
+        'horizon-fog-blend': 0.6,
+        'fog-ground-blend': 0.2,
+        'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 4, 0.7, 7, 0],
+      });
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
@@ -343,7 +353,10 @@ export function Globe({ events, onEventClick }: GlobeProps) {
       isPanning = true;
       const pan = () => {
         if (!isPanning) return;
-        map.panBy([0.4, 0], { duration: 0, animate: false });
+        // Spin by longitude only. A sideways pixel pan follows a great circle on a globe
+        // and drifts toward the pole; this keeps the latitude fixed.
+        const c = map.getCenter();
+        map.jumpTo({ center: [c.lng + 0.04, c.lat] });
         panFrame = requestAnimationFrame(pan);
       };
       panFrame = requestAnimationFrame(pan);
