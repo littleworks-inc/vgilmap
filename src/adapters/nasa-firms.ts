@@ -1,11 +1,10 @@
 /**
- * NASA FIRMS Adapter — VIIRS SNPP Near-Real-Time Wildfires
+ * NASA FIRMS Adapter — VIIRS Near-Real-Time Wildfires
  *
- * Feed: https://firms.modaps.eosdis.nasa.gov/api/area/csv/DEMO_KEY/VIIRS_SNPP_NRT/-180,-90,180,90/1
- * Returns CSV with the last 24 hours of global thermal anomalies / active fires.
- *
- * DEMO_KEY works for low-traffic development. Replace with a real NASA key via
- * VITE_NASA_FIRMS_API_KEY for production (free at https://firms.modaps.eosdis.nasa.gov/api/map_key/).
+ * Fetched via our own /api/firms proxy (api/firms.ts), which holds the NASA key server-side,
+ * queries the NOAA-20/21 VIIRS feeds, and returns only the strongest detections as CSV.
+ * (The old Suomi-NPP feed stopped updating on 2026-11-02, and calling NASA directly from the
+ * browser meant a ~3 MB download per visitor plus a key in the JS bundle.)
  *
  * CSV columns (VIIRS NRT):
  *   latitude, longitude, bright_ti4, scan, track, acq_date, acq_time,
@@ -99,16 +98,8 @@ function acqToISO(date: string, time: string): string {
 
 // ─── Main fetch ────────────────────────────────────────────
 
-const API_KEY =
-  typeof import.meta !== 'undefined'
-    ? (import.meta.env?.VITE_NASA_FIRMS_API_KEY ?? 'DEMO_KEY')
-    : 'DEMO_KEY';
-
-const FIRMS_URL =
-  `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${API_KEY}/VIIRS_SNPP_NRT/-180,-90,180,90/1`;
-
 export async function fetchNASAFirms(): Promise<VigilEvent[]> {
-  const response = await fetch(FIRMS_URL);
+  const response = await fetch('/api/firms');
 
   if (!response.ok) {
     throw new Error(`NASA FIRMS fetch failed: ${response.status} ${response.statusText}`);
@@ -123,14 +114,13 @@ export async function fetchNASAFirms(): Promise<VigilEvent[]> {
 
   const allRows = parseCSV(csv);
 
-  // FIRMS returns every thermal anomaly globally — tens of thousands per day.
-  // Keep only the top 50 by Fire Radiative Power so the sidebar / AI brief
-  // reflects genuinely significant fires rather than every hotspot pixel.
+  // The proxy already trimmed to the strongest detections by Fire Radiative Power.
+  // Keep the top 50 so the sidebar / AI brief reflects genuinely significant fires.
   const rows = [...allRows]
     .sort((a, b) => b.frp - a.frp)
     .slice(0, 50);
 
-  return rows.map((row, index): VigilEvent => {
+  return rows.map((row): VigilEvent => {
     const severity = brightnessToSeverity(row.bright_ti4, row.frp);
     const timestamp = acqToISO(row.acq_date, row.acq_time);
 
@@ -140,7 +130,9 @@ export async function fetchNASAFirms(): Promise<VigilEvent[]> {
     if (row.frp > 500) tags.push('extreme-frp');
 
     return {
-      id: `firms-viirs-${row.acq_date}-${row.acq_time}-${index}`,
+      // Position + acquisition time: stable across refreshes (an array index was not, because
+      // the list is re-sorted by FRP each time, which broke deep links to a selected fire).
+      id: `firms-${row.latitude.toFixed(3)}-${row.longitude.toFixed(3)}-${row.acq_date}-${row.acq_time}`,
       timestamp,
       domain: 'climate',
       category: 'wildfire',

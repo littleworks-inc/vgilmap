@@ -66,7 +66,7 @@ Open [localhost:5173](http://localhost:5173).
 | Variable | Required | Where to get it |
 |----------|----------|-----------------|
 | `NVIDIA_API_KEY` | Optional | [build.nvidia.com](https://build.nvidia.com) — server-side only (Vercel env var), powers `/api/brief` |
-| `VITE_NASA_FIRMS_API_KEY` | Optional | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov/api/map_key/) — free |
+| `NASA_FIRMS_API_KEY` | Optional (server-side; legacy `VITE_NASA_FIRMS_API_KEY` also read) | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov/api/map_key/) — free |
 
 Without these keys the app still works — AI briefs show an auto-generated fallback, NASA uses the public `DEMO_KEY` (rate-limited).
 
