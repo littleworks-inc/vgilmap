@@ -26,6 +26,8 @@ import type { AnomalySignal } from '../intelligence/anomaly';
 import type { CyberFocus } from '../types';
 
 interface SidebarProps {
+  /** Switch to the Today briefing. */
+  onOpenToday?: () => void;
   events: VigilEvent[];
   selectedId?: string;
   loading: boolean;
@@ -205,6 +207,7 @@ export function Sidebar({
   events,
   selectedId,
   loading,
+  onOpenToday,
   error,
   lastUpdated,
   onSelectEvent,
@@ -407,8 +410,22 @@ export function Sidebar({
           padding: '16px',
           borderBottom: '1px solid #1e293b',
           background: '#0a0f1e',
+          position: 'relative',
         }}
       >
+        {onOpenToday && (
+          <button
+            onClick={onOpenToday}
+            title="Open the Today briefing"
+            style={{
+              position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+              background: '#0f766e22', border: '1px solid #0f766e', color: '#5eead4', borderRadius: '6px',
+              padding: '4px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Today
+          </button>
+        )}
         <a
           href="/"
           style={{

@@ -20,6 +20,7 @@ import { useIsMobile } from './hooks/useIsMobile';
 import { usePersistedBool } from './hooks/usePersistedBool';
 import { readViewState, writeViewState, isDefaultView } from './utils/viewState';
 import { MobileDrawer } from './components/MobileDrawer';
+import { TodayView } from './today/TodayView';
 import { fetchSource } from './data/pipeline';
 import { applyOutcome } from './data/refresh';
 import type { RefreshOutcome } from './data/refresh';
@@ -246,6 +247,15 @@ export default function App() {
   const [loading, setLoading]           = useState(true);
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null);
   const [selectedId, setSelectedId]     = useState<string | undefined>(getEventIdFromURL() ?? undefined);
+  // Two destinations: Explore (the globe, the default) and Today (a readable briefing). Today is an overlay,
+  // so the globe underneath keeps its state and is not rebuilt when switching back.
+  const [view, setView] = useState<'today' | 'explore'>(() => (new URLSearchParams(window.location.search).get('view') === 'today' ? 'today' : 'explore'));
+  const changeView = useCallback((next: 'today' | 'explore') => {
+    setView(next);
+    const url = new URL(window.location.href);
+    if (next === 'today') url.searchParams.set('view', 'today'); else url.searchParams.delete('view');
+    history.replaceState(null, '', url.toString());
+  }, []);
   // The view (time window + hidden domains) survives a refresh: URL > last saved > defaults.
   // Globe position, search text and the cyber drill-down intentionally start fresh.
   const [initialView] = useState(() => readViewState(ALL_DOMAINS));
@@ -470,6 +480,7 @@ export default function App() {
       {/* Desktop sidebar — hidden on mobile */}
       {!isMobile && (
         <Sidebar
+          onOpenToday={() => changeView('today')}
           events={filteredEvents}
           selectedId={listSelectedId}
           loading={loading}
@@ -574,6 +585,7 @@ export default function App() {
       {/* Mobile bottom drawer — replaces sidebar on small screens */}
       {isMobile && (
         <MobileDrawer
+          onOpenToday={() => changeView('today')}
           events={filteredEvents}
           selectedId={listSelectedId}
           loading={loading}
@@ -588,6 +600,16 @@ export default function App() {
           sourceHealth={sourceHealth}
           viewCounts={viewCounts}
           activeDomains={activeDomains}
+        />
+      )}
+
+      {view === 'today' && (
+        <TodayView
+          events={windowedAll}
+          lastUpdated={lastUpdated}
+          loading={loading}
+          onExplore={() => changeView('explore')}
+          onShowOnMap={ev => { changeView('explore'); handleSelectEvent(ev); }}
         />
       )}
     </div>

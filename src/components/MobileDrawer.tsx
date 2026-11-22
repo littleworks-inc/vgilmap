@@ -23,6 +23,8 @@ import type { Domain } from '../types';
 import type { AnomalySignal } from '../intelligence/anomaly';
 import type { CyberFocus } from '../types';
 interface MobileDrawerProps {
+  /** Switch to the Today briefing. */
+  onOpenToday?: () => void;
   events: VigilEvent[];
   selectedId?: string;
   loading: boolean;
@@ -49,7 +51,7 @@ function timeAgo(iso: string): string {
 }
 const PEEK_H = 110;  // px visible when collapsed
 export function MobileDrawer({
-  events, selectedId, loading, error, lastUpdated,
+  events, selectedId, loading, error, lastUpdated, onOpenToday,
   onSelectEvent, onRefresh, anomalySignals, onSelectSignal, cyberFocus, onCyberFocus, sourceHealth, viewCounts, activeDomains,
 }: MobileDrawerProps) {
   const [expanded, setExpanded] = useState(false);
@@ -242,6 +244,14 @@ export function MobileDrawer({
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {onOpenToday && (
+              <button
+                onClick={e => { e.stopPropagation(); onOpenToday(); }}
+                style={{ background: '#0f766e22', border: '1px solid #0f766e', color: '#5eead4', borderRadius: '6px', padding: '4px 10px', fontSize: '12px', fontWeight: 600 }}
+              >
+                Today
+              </button>
+            )}
             {/* Critical badge */}
             {critCount > 0 && (
               <span style={{

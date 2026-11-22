@@ -284,6 +284,17 @@ Full spec: [`/openapi.json`](https://vgilmap.vercel.app/openapi.json)
 
 ---
 
+## Today: a readable briefing (prototype)
+
+Alongside the globe (**Explore**, still the default) there is **Today**: a short briefing instead of a control room. Open it from the **Today** button in the sidebar or drawer, or with `?view=today`. Light by default, with a dark alternative.
+
+- **Today** shows what is new or updated for you, then the most significant developments elsewhere. Each card says where and when (publication time, and occurrence time when a source gives one), *what changed*, and what it rests on ("1 news report · 1 attacker claim"). A claim-only incident ranks below measured or reported events of the same severity.
+- **An incident page** reads in a fixed order: *current understanding → what changed → evidence → unknowns → location*. Facts are separate rows, each with its **own** supporting reports, so an organization-confirmed intrusion and an unverified theft claim are never flattened into one badge. Questions no report answers say **"Not established"** instead of being guessed. Facts come only from the reports we hold (for example a record count appears only if the breach catalog gives one).
+- **What changed** compares with a snapshot of what **this browser** showed last time (stored only on this device). It reports new items and added reports, naming the evidence that was added. It **cannot** show edits or corrections: that needs stored incident identity and history, which is not built yet. Full history lists when each report appeared.
+- On a phone, an open incident is a full page with a Back button.
+
+Not built yet: following places or organizations, notifications, stored incident history, fact-level change tracking, and a small map on the incident page ("Show on the map" switches to Explore). This is a prototype to compare with the globe on the same incidents (can people find what changed, tell whether a claim was confirmed, and name the source of a statement?), not a claim that it is better.
+
 ## Adding a new data source
 
 1. **Normalizer:** `shared/adapters/your-source.ts` exports `normalizeYourSource(raw): VigilEvent[]` (or `{ events, warnings }`). Pure: no `fetch`, no DOM. Throw if the raw data is unusable as a whole.
