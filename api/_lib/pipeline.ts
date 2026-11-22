@@ -40,17 +40,28 @@ export async function runPipeline(params: URLSearchParams, deps: PipelineDeps = 
   return { body: buildEventsResponse(results, q, (deps.now ?? Date.now)()), results };
 }
 
+/** How long the engine holds a failed or partial snapshot before asking upstream again (see engine.ts). */
+const RETRY_AFTER_S = 30;
+
 /**
- * Edge caching follows the fastest-refreshing selected source (a WHO-only request is cached for an
- * hour, an all-source one for the earthquake interval). Anything degraded is cached only briefly so
- * recovery shows up quickly, and a response with no data at all is never cached. The engine also
- * keeps a per-source snapshot, so different filters and pages reuse one fetch.
+ * Edge caching follows each source's REMAINING freshness, not its full interval. A WHO snapshot that
+ * is already 59 minutes old may be cached for one more minute, not for another hour, or a different
+ * query could be served nearly two-hour-old data under a one-hour policy. For a response spanning
+ * several sources the shortest remaining time wins. A degraded, partial or failed source is held
+ * only for the short retry window (so recovery shows up quickly), and a response with no data at
+ * all is never cached.
  */
 export function cacheControl(body: EventsResponse): string {
   if (!body.ok) return 'no-store';
-  const degraded = body.sources.some(s => s.status === 'error' || s.status === 'degraded');
-  const ttl = degraded || body.sources.length === 0 ? 30 : Math.min(...body.sources.map(s => s.refreshSeconds));
-  return `public, s-maxage=${ttl}, stale-while-revalidate=60`;
+  const now = Date.parse(body.generated);
+  const remaining = body.sources.map(s => {
+    const age = Math.max(0, (now - s.checkedAt) / 1000); // checkedAt = when this snapshot was produced
+    const unhealthy = s.status === 'error' || s.status === 'degraded' || s.retained || s.warnings.length > 0;
+    return (unhealthy ? Math.min(RETRY_AFTER_S, s.refreshSeconds) : s.refreshSeconds) - age;
+  });
+  const ttl = remaining.length === 0 ? RETRY_AFTER_S : Math.max(0, Math.floor(Math.min(...remaining)));
+  // Stale-while-revalidate never outlasts the freshness left, so it cannot stretch an old snapshot.
+  return `public, s-maxage=${ttl}, stale-while-revalidate=${Math.min(60, ttl)}`;
 }
 
 /** 400 for a request we refuse (with the valid values), 500 for anything unexpected. */

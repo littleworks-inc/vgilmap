@@ -113,7 +113,7 @@ export function DataHealthPanel({ sources, viewCounts, activeDomains }: DataHeal
                       fontSize: '10px', fontWeight: 700, padding: '1px 5px', borderRadius: '4px',
                       color: slow ? '#eab308' : meta.color, border: `1px solid ${slow ? '#eab308' : meta.color}66`, background: `${slow ? '#eab308' : meta.color}11`,
                     }}>
-                      {s.status === 'loading' ? (slow ? `Slow · ${elapsed}s` : `Loading · ${elapsed}s`) : s.retained ? 'Stale · refresh failed' : meta.label}
+                      {s.status === 'loading' ? (slow ? `Slow · ${elapsed}s` : `Loading · ${elapsed}s`) : s.retained && s.status === 'error' ? 'Stale · refresh failed' : meta.label}
                     </span>
                   </span>
                 </div>

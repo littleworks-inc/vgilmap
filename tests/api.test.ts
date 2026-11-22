@@ -16,9 +16,11 @@ const alertFeature = (i: number, withGeometry: boolean) => ({
 
 let usgsUp = true;
 let usgsCalls = 0;
+let whoCalls = 0;
 function mockFetch() {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.includes('who.int')) { whoCalls++; }
     if (url.includes('who.int')) return new Response(JSON.stringify({ value: [{ Title: 'Cholera - Somewhere', UrlName: 'cholera-somewhere', PublicationDateAndTime: new Date().toISOString(), Summary: '' }] }));
     if (url.includes('all_day.geojson')) {
       usgsCalls++;
@@ -38,7 +40,7 @@ async function get<T = EventsResponse>(path: string): Promise<{ res: Response; b
   return { res, body: (await res.json()) as T };
 }
 
-beforeEach(() => { usgsUp = true; usgsCalls = 0; mockFetch(); });
+beforeEach(() => { usgsUp = true; usgsCalls = 0; whoCalls = 0; mockFetch(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.resetModules(); });
 
 describe('/api/v1/events (end to end, mocked upstreams)', () => {
@@ -122,6 +124,11 @@ describe('/api/v1/events (end to end, mocked upstreams)', () => {
       ['limit=lots', /Invalid "limit"/],
       ['cursor=!!!', /Invalid "cursor"/],
       ['offset=5', /cursor/],
+      ['limit=0', /Invalid "limit"/],
+      ['limit=1001', /Invalid "limit"/],
+      ['since=2026-02-30', /Invalid "since"/],
+      ['source=', /is empty/],
+      ['domain=,', /is empty/],
     ])('%s → 400', async (qs, message) => {
       for (const path of ['/api/v1/events', '/api/v1/summary']) {
         const { res, body } = await get<{ ok: boolean; error: string; valid?: string[] }>(`${path}?${qs}`);
@@ -144,6 +151,31 @@ describe('/api/v1/events (end to end, mocked upstreams)', () => {
       expect(who.res.headers.get('cache-control')).toMatch(/s-maxage=3600\b/);
       const quakes = await get('/api/v1/events?source=usgs-day');
       expect(quakes.res.headers.get('cache-control')).toMatch(/s-maxage=120\b/);
+    });
+    it('caches an old snapshot only for the freshness it has LEFT, never a whole new interval', async () => {
+      const t0 = Date.now();
+      vi.useFakeTimers({ toFake: ['Date'], now: t0 });
+      const first = await get('/api/v1/events?source=who');
+      expect(first.res.headers.get('cache-control')).toMatch(/s-maxage=3600\b/);
+
+      vi.setSystemTime(t0 + 3_599_000); // the snapshot is 3599s old; a different query asks for it
+      const second = await get('/api/v1/events?source=who&limit=1');
+      expect(whoCalls).toBe(1);                                   // same snapshot, no new fetch
+      expect(second.res.headers.get('cache-control')).toMatch(/s-maxage=1\b/); // was 3600: up to ~2h of staleness
+      expect(second.res.headers.get('cache-control')).toMatch(/stale-while-revalidate=1\b/);
+
+      vi.setSystemTime(t0 + 3_601_000); // past the interval: refetched, and a full interval again
+      const third = await get('/api/v1/events?source=who&limit=2');
+      expect(whoCalls).toBe(2);
+      expect(third.res.headers.get('cache-control')).toMatch(/s-maxage=3600\b/);
+    });
+    it('a mixed request is limited by the source with the least freshness left', async () => {
+      const t0 = Date.now();
+      vi.useFakeTimers({ toFake: ['Date'], now: t0 });
+      await get('/api/v1/events?source=usgs-day');                 // refreshes every 120s
+      vi.setSystemTime(t0 + 100_000);                              // 20s of its freshness remain
+      const { res } = await get('/api/v1/events?source=who,usgs-day');
+      expect(res.headers.get('cache-control')).toMatch(/s-maxage=20\b/);
     });
     it('a mixed request uses its fastest-refreshing source', async () => {
       const { res } = await get('/api/v1/events?source=who,usgs-day');

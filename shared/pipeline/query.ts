@@ -47,7 +47,38 @@ function decodeCursor(raw: string): Cursor {
   throw new QueryError('Invalid "cursor": pass the next_cursor value from a previous response unchanged');
 }
 
-const list = (v: string | null) => (v ? v.split(',').map(s => s.trim()).filter(Boolean) : undefined);
+/**
+ * A comma-separated filter. Present-but-empty ("?source=" or "?domain=,") is an error: it would
+ * otherwise quietly fall back to "everything", which looks like a legitimate result.
+ */
+function list(params: URLSearchParams, name: string): string[] | undefined {
+  if (!params.has(name)) return undefined;
+  const values = (params.get(name) ?? '').split(',').map(s => s.trim()).filter(Boolean);
+  if (values.length === 0) throw new QueryError(`"${name}" is empty: give at least one value, or leave the parameter out`);
+  return values;
+}
+
+/** A parameter that takes a single value must not be present-but-empty either. */
+function single(params: URLSearchParams, name: string): string | null {
+  if (!params.has(name)) return null;
+  const v = (params.get(name) ?? '').trim();
+  if (!v) throw new QueryError(`"${name}" is empty: give a value, or leave the parameter out`);
+  return v;
+}
+
+const ISO = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+
+/** Strict ISO 8601 date or date-time. Impossible dates (2026-02-30) are rejected, not rolled into March. */
+export function parseIsoStrict(raw: string): number {
+  const m = ISO.exec(raw);
+  if (!m) return NaN;
+  const [y, mo, d, h = '0', mi = '0', sec = '0'] = m.slice(1, 7);
+  const [Y, M, D, H, MI, S] = [y, mo, d, h, mi, sec].map(Number);
+  if (M < 1 || M > 12 || H > 23 || MI > 59 || S > 59) return NaN;
+  const probe = new Date(Date.UTC(Y, M - 1, D));
+  if (probe.getUTCMonth() !== M - 1 || probe.getUTCDate() !== D) return NaN; // day not in that month
+  return new Date(m[7] || !m[4] ? raw.replace(' ', 'T') : `${raw.replace(' ', 'T')}Z`).getTime();
+}
 
 function oneOf<T extends string>(name: string, values: string[], allowed: readonly T[]): T[] {
   const bad = values.filter(v => !(allowed as readonly string[]).includes(v));
@@ -63,27 +94,28 @@ function oneOf<T extends string>(name: string, values: string[], allowed: readon
 export function parseQuery(params: URLSearchParams, known: { sources: string[] }): EventQuery {
   if (params.has('offset')) throw new QueryError('"offset" was replaced by "cursor": pass next_cursor from the previous response (offsets shift when new events arrive)');
 
-  const domains = list(params.get('domain'));
-  const sources = list(params.get('source'));
-  const sev = params.get('severity');
-  const sinceRaw = params.get('since');
-  const loc = params.get('location');
-  const limitRaw = params.get('limit');
-  const cursorRaw = params.get('cursor');
+  const domains = list(params, 'domain');
+  const sources = list(params, 'source');
+  const sev = single(params, 'severity');
+  const sinceRaw = single(params, 'since');
+  const loc = single(params, 'location');
+  const limitRaw = single(params, 'limit');
+  const cursorRaw = single(params, 'cursor');
 
   const q: EventQuery = { location: 'all', limit: DEFAULT_LIMIT };
   if (domains) q.domains = oneOf('domain', domains, DOMAINS);
   if (sources) q.sources = oneOf('source', sources, known.sources);
   if (sev) q.minSeverity = oneOf('severity', [sev], Object.keys(SEVERITY_ORDER) as Severity[])[0];
   if (sinceRaw) {
-    const t = new Date(sinceRaw).getTime();
-    if (Number.isNaN(t)) throw new QueryError(`Invalid "since" "${sinceRaw}": use an ISO 8601 timestamp, e.g. 2026-11-20T00:00:00Z`);
+    const t = parseIsoStrict(sinceRaw);
+    if (Number.isNaN(t)) throw new QueryError(`Invalid "since" "${sinceRaw}": use a real ISO 8601 date or timestamp, e.g. 2026-11-20 or 2026-11-20T00:00:00Z`);
     q.since = t;
   }
   if (loc) q.location = oneOf('location', [loc], ['all', 'map', 'nomap'] as const)[0];
   if (limitRaw !== null) {
-    if (!/^\d+$/.test(limitRaw)) throw new QueryError(`Invalid "limit" "${limitRaw}": use a whole number from 1 to ${MAX_LIMIT}`);
-    q.limit = Math.min(Math.max(parseInt(limitRaw, 10), 1), MAX_LIMIT);
+    const n = /^\d+$/.test(limitRaw) ? parseInt(limitRaw, 10) : NaN;
+    if (!(n >= 1 && n <= MAX_LIMIT)) throw new QueryError(`Invalid "limit" "${limitRaw}": use a whole number from 1 to ${MAX_LIMIT}`);
+    q.limit = n;
   }
   if (cursorRaw) q.cursor = decodeCursor(cursorRaw);
   return q;

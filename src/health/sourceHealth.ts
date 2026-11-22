@@ -6,7 +6,7 @@ import type { Domain } from '../types';
 import type { HealthStatus } from '../../shared/pipeline/health';
 import type { SourceStatus } from '../../shared/pipeline/engine';
 
-export { classify } from '../../shared/pipeline/health';
+export { classify, ago } from '../../shared/pipeline/health';
 export type { HealthStatus };
 
 /** A source's status as the UI tracks it: the server's report plus client-only fields. */
@@ -46,14 +46,4 @@ export function summarize(sources: SourceHealth[]): { live: number; total: numbe
     if (SEVERITY[s.status] > SEVERITY[worst]) worst = s.status;
   }
   return { live, total: sources.length, worst };
-}
-
-export function ago(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return 'just now';
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 48) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
 }

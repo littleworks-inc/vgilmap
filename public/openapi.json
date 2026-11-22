@@ -16,7 +16,7 @@
         "parameters": [
           { "name": "domain", "in": "query", "description": "Comma-separated domains to include", "schema": { "type": "string", "example": "disaster,conflict" } },
           { "name": "severity", "in": "query", "description": "Minimum severity level", "schema": { "type": "string", "enum": ["info","low","medium","high","critical"] } },
-          { "name": "limit", "in": "query", "description": "Page size (max 1000). Use next_cursor in the response to continue.", "schema": { "type": "integer", "default": 100, "maximum": 1000 } },
+          { "name": "limit", "in": "query", "description": "Page size, 1 to 1000 (out-of-range values are rejected with 400). Use next_cursor in the response to continue.", "schema": { "type": "integer", "default": 100, "maximum": 1000 } },
           { "name": "cursor", "in": "query", "description": "Pass next_cursor from the previous response to get the next page. Stable while events arrive or expire.", "schema": { "type": "string" } },
           { "name": "source", "in": "query", "description": "Comma-separated source keys. Default: every source except the optional GDELT extra", "schema": { "type": "string", "example": "usgs-day,noaa" } },
           { "name": "optional", "in": "query", "description": "Set to 1 to include optional sources in a whole-dataset request", "schema": { "type": "string", "enum": ["1"] } },
@@ -24,7 +24,7 @@
           { "name": "since", "in": "query", "description": "ISO timestamp — only events after this time", "schema": { "type": "string", "format": "date-time" } }
         ],
         "responses": {
-          "400": { "description": "Unsupported filter, malformed date/limit/cursor. Body: { ok: false, error, valid? } with the accepted values" },
+          "400": { "description": "Unsupported or empty filter, impossible date, out-of-range limit, malformed cursor. Body: { ok: false, error, valid? } with the accepted values" },
           "200": {
             "description": "Success",
             "content": {

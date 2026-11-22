@@ -9,10 +9,31 @@ const q = (s = '') => parseQuery(new URLSearchParams(s), known);
 const unlocated = (id: string) => ev(id, { domain: 'cyber', location: { lat: 0, lng: 0, country: 'Global', region: '', label: 'Global' }, metadata: { unlocated: true } });
 
 describe('parseQuery', () => {
-  it('has sensible defaults and clamps out-of-range limits', () => {
+  it('has sensible defaults and accepts the full valid limit range', () => {
     expect(q()).toMatchObject({ limit: 100, location: 'all' });
-    expect(q('limit=99999').limit).toBe(1000);
-    expect(q('limit=0').limit).toBe(1);
+    expect(q('limit=1').limit).toBe(1);
+    expect(q('limit=1000').limit).toBe(1000);
+  });
+
+  describe('rejects values that used to be silently corrected', () => {
+    const fails = (qs: string) => { try { q(qs); return null; } catch (e) { return (e as QueryError).message; } };
+    it.each(['limit=0', 'limit=1001', 'limit=99999', 'limit=1.5', 'limit=%2B5'])('%s', qs => {
+      expect(fails(qs)).toMatch(/Invalid "limit"/);
+    });
+    it.each(['since=2026-02-30', 'since=2026-02-29', 'since=2026-13-01', 'since=2026-11-31', 'since=2026-11-20T25:00:00Z', 'since=2026-11-20T10:61:00Z', 'since=20261120', 'since=Nov%2020'])('%s', qs => {
+      expect(fails(qs)).toMatch(/Invalid "since"/);
+    });
+    it.each(['source=', 'source=,', 'source=%20', 'domain=', 'domain=,,', 'severity=', 'location=', 'since=', 'limit=', 'cursor='])('explicitly empty %s', qs => {
+      expect(fails(qs)).toMatch(/is empty/);
+    });
+  });
+
+  it('accepts real dates: leap days, date-only, and times with or without a zone', () => {
+    expect(q('since=2028-02-29').since).toBe(Date.UTC(2028, 1, 29));
+    expect(q('since=2026-11-20').since).toBe(Date.UTC(2026, 10, 20));
+    expect(q('since=2026-11-20T10:30:00').since).toBe(Date.UTC(2026, 10, 20, 10, 30)); // no zone = UTC
+    expect(q('since=2026-11-20T10:30:00Z').since).toBe(Date.UTC(2026, 10, 20, 10, 30));
+    expect(q('since=2026-11-20T10:30:00%2B02:00').since).toBe(Date.UTC(2026, 10, 20, 8, 30));
   });
 
   describe('rejects unsupported filters instead of silently widening the result', () => {

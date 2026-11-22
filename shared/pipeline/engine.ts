@@ -6,7 +6,7 @@
 import type { VigilEvent } from '../types';
 import type { NormalizeResult, Part } from '../adapters/result';
 import type { SourceMeta } from './sources';
-import { classify } from './health';
+import { ago, classify } from './health';
 import type { HealthStatus } from './health';
 import { withPrecision } from './precision';
 
@@ -32,12 +32,25 @@ export interface SourceStatus {
   dataAt?: number;
   /** Epoch ms of the last run that returned events. */
   lastOkAt?: number;
+  /** For multi-feed sources: how each feed contributed (fresh, or retained from an earlier fetch). */
+  parts?: PartStatus[];
   durationMs: number;
   checkedAt: number;
   optional?: boolean;
   refreshSeconds: number;
   precision: SourceMeta['precision'];
   coverage: string;
+}
+
+export interface PartStatus {
+  name: string;
+  /** This feed answered in the latest run. */
+  ok: boolean;
+  /** This feed failed, and its events below are from an earlier fetch. */
+  retained?: boolean;
+  count: number;
+  /** When this feed's events were fetched (epoch ms). */
+  dataAt: number;
 }
 
 export interface SourceResult {
@@ -48,14 +61,18 @@ export interface SourceResult {
 /** The last successful run of a source, kept so a failing refresh can fall back to it. */
 export interface LastGood {
   events: VigilEvent[];
+  /** When these events were fetched. For multi-feed sources, the OLDEST contributing feed's time. */
   at: number;
-  /** For multi-feed sources: each feed's last good events, so one feed failing keeps only ITS old data. */
-  parts?: Record<string, VigilEvent[]>;
+  /** Last time any events came back fresh (a later run with nothing new does not move it). */
+  lastOkAt?: number;
+  /** For multi-feed sources: each feed's last good events AND when they were fetched. */
+  parts?: Record<string, { events: VigilEvent[]; at: number }>;
 }
 
 /** What the engine remembers per source: the last good data and the outcome of the latest run. */
 export interface SourceEntry {
   good?: LastGood;
+  /** `ok` is false when the run failed OR was only partial (a feed or upstream failed): both are retried sooner. */
   last?: { result: SourceResult; at: number; ok: boolean };
 }
 
@@ -100,19 +117,35 @@ function baseStatus(meta: SourceMeta): Pick<SourceStatus, 'key' | 'label' | 'dom
 }
 
 /**
- * Combine a multi-feed result with what we remember. A feed that answered replaces its old events;
- * a feed that failed keeps its previous events, so one upstream going down never shrinks the data.
+ * Combine a multi-feed result with what we remember, feed by feed. A feed that answered replaces its
+ * old events (and takes the current time); a feed that failed keeps its previous events AND the time
+ * they were fetched, so retained data never looks fresher than it is.
  */
-function mergeParts(parts: Part[], prev: Record<string, VigilEvent[]> | undefined): { events: VigilEvent[]; kept: Record<string, VigilEvent[]>; notes: string[] } {
-  const kept: Record<string, VigilEvent[]> = {};
+function mergeParts(parts: Part[], prev: LastGood['parts'], now: number) {
+  const kept: NonNullable<LastGood['parts']> = {};
   const notes: string[] = [];
+  const status: PartStatus[] = [];
   for (const p of parts) {
-    if (p.ok) { kept[p.name] = p.events; continue; }
-    const old = prev?.[p.name] ?? [];
-    kept[p.name] = old;
-    if (old.length > 0) notes.push(`${p.name}: refresh failed, showing ${old.length} earlier events`);
+    const old = prev?.[p.name];
+    if (p.ok) {
+      kept[p.name] = { events: p.events, at: now };
+      status.push({ name: p.name, ok: true, count: p.events.length, dataAt: now });
+    } else if (old) {
+      kept[p.name] = old;
+      status.push({ name: p.name, ok: false, retained: old.events.length > 0, count: old.events.length, dataAt: old.at });
+      if (old.events.length > 0) notes.push(`${p.name}: refresh failed, showing ${old.events.length} events from ${ago(now - old.at)}`);
+    } else {
+      status.push({ name: p.name, ok: false, count: 0, dataAt: now });
+    }
   }
-  return { events: Object.values(kept).flat(), kept, notes };
+  const contributing = Object.values(kept).filter(k => k.events.length > 0);
+  return {
+    events: contributing.flatMap(k => k.events), kept, notes, status,
+    retained: status.some(s => s.retained),
+    // The data is as old as its oldest contributing feed.
+    dataAt: contributing.length > 0 ? Math.min(...contributing.map(k => k.at)) : now,
+    freshEvents: parts.some(p => p.ok && p.events.length > 0),
+  };
 }
 
 async function execute(loader: SourceLoader, store: LastGoodStore, opts: RunOptions): Promise<SourceResult> {
@@ -122,25 +155,36 @@ async function execute(loader: SourceLoader, store: LastGoodStore, opts: RunOpti
   const prev = store.get(meta.key);
   try {
     const out = await withTimeout(loader.load(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, meta.label);
+    const t = now();
     let raw = out.events;
-    let kept: Record<string, VigilEvent[]> | undefined;
+    let kept: LastGood['parts'];
+    let partStatus: PartStatus[] | undefined;
+    let retained = false;
+    let dataAt = t;
+    let freshEvents = out.events.length > 0;
     const warnings = [...out.warnings];
     if (out.parts) {
-      const merged = mergeParts(out.parts, prev?.good?.parts);
-      raw = merged.events; kept = merged.kept; warnings.push(...merged.notes);
+      const merged = mergeParts(out.parts, prev?.good?.parts, t);
+      raw = merged.events; kept = merged.kept; partStatus = merged.status;
+      retained = merged.retained; dataAt = merged.dataAt; freshEvents = merged.freshEvents;
+      warnings.push(...merged.notes);
     }
     const events = raw.map(e => withPrecision(e, meta.precision));
-    const t = now();
     const { status, newestAt } = classify(events, meta.staleAfterHours, warnings, t);
+    // "Last had data" only moves when something came back fresh; retained events keep their own time.
+    const lastOkAt = freshEvents ? t : prev?.good?.lastOkAt ?? (prev?.good?.events.length ? prev.good.at : undefined);
+    // A partial run (a feed or upstream failed) is retried on the failure back-off, not held for the full interval.
+    const partial = out.warnings.length > 0 || !!out.parts?.some(p => !p.ok);
     const result: SourceResult = {
       events,
       status: {
         ...baseStatus(meta), status, count: events.length, newestAt, warnings,
-        dataAt: t, lastOkAt: events.length > 0 ? t : prev?.good?.events.length ? prev.good.at : undefined,
-        durationMs: t - startedAt, checkedAt: t,
+        ...(retained ? { retained: true } : {}),
+        ...(partStatus ? { parts: partStatus } : {}),
+        dataAt, lastOkAt, durationMs: t - startedAt, checkedAt: t,
       },
     };
-    store.set(meta.key, { good: { events, at: t, parts: kept }, last: { result, at: t, ok: true } });
+    store.set(meta.key, { good: { events, at: dataAt, lastOkAt, parts: kept }, last: { result, at: t, ok: !partial } });
     return result;
   } catch (reason) {
     const t = now();
@@ -153,7 +197,8 @@ async function execute(loader: SourceLoader, store: LastGoodStore, opts: RunOpti
         ...baseStatus(meta), status: 'error', count: retained ? kept.events.length : 0,
         newestAt: retained ? classify(kept.events, meta.staleAfterHours, [], t).newestAt : undefined,
         warnings: [], error, retained: retained || undefined,
-        dataAt: retained ? kept.at : undefined, lastOkAt: retained ? kept.at : undefined,
+        dataAt: retained ? kept.at : undefined, lastOkAt: retained ? (kept.lastOkAt ?? kept.at) : undefined,
+        ...(retained && kept.parts ? { parts: Object.entries(kept.parts).map(([name, k]) => ({ name, ok: false, retained: k.events.length > 0, count: k.events.length, dataAt: k.at })) } : {}),
         durationMs: t - startedAt, checkedAt: t,
       },
     };
