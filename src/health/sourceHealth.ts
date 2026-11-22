@@ -1,34 +1,25 @@
 /**
- * Data-source health model.
- *
- * Why this exists: most "problems" with the data were invisible. A source that is down, a
- * source that is up but returning nothing, and a source returning only years-old items all
- * look the same on the map: nothing. This classifies each source so the UI can say which.
+ * Data-source health, UI side. The status model and classifier are shared with the server
+ * pipeline (shared/pipeline/health.ts); this file adds what only the panel needs.
  */
-import type { Domain, VigilEvent } from '../types';
+import type { Domain } from '../types';
+import type { HealthStatus } from '../../shared/pipeline/health';
+import type { SourceStatus } from '../../shared/pipeline/engine';
 
-export type HealthStatus =
-  | 'loading'   // first fetch still in flight
-  | 'ok'        // returned recent events
-  | 'degraded'  // returned events, but a part of the source failed (see warnings)
-  | 'stale'     // returned events, but the newest is older than this source should produce
-  | 'empty'     // request succeeded but returned no events
-  | 'error';    // request failed
+export { classify } from '../../shared/pipeline/health';
+export type { HealthStatus };
 
-export interface SourceHealth {
+/** A source's status as the UI tracks it: the server's report plus client-only fields. */
+export interface SourceHealth extends Partial<Omit<SourceStatus, 'status' | 'key' | 'label' | 'domain' | 'warnings'>> {
   key: string;
   label: string;
   domain: Domain;
   status: HealthStatus;
   count: number;
-  newestAt?: string;      // ISO timestamp of the newest event
-  lastOkAt?: number;      // epoch ms of the last time this source had events
-  error?: string;
   warnings: string[];
-  durationMs?: number;
+  lastOkAt?: number;      // epoch ms of the last time this source had events
   checkedAt?: number;     // epoch ms of the last completed attempt
   startedAt?: number;     // epoch ms when the first fetch began (used to show how long it's been loading)
-  optional?: boolean;     // an extra source: its failure is shown, but never raised as an alarm
 }
 
 export const STATUS_META: Record<HealthStatus, { label: string; color: string; hint: string }> = {
@@ -39,25 +30,6 @@ export const STATUS_META: Record<HealthStatus, { label: string; color: string; h
   empty:    { label: 'No data',  color: '#94a3b8', hint: 'Responded, but returned no events' },
   error:    { label: 'Down',     color: '#ef4444', hint: 'Request failed' },
 };
-
-/** Classify a successful fetch. */
-export function classify(
-  events: VigilEvent[],
-  staleAfterHours: number,
-  warnings: string[],
-  now: number,
-): { status: HealthStatus; newestAt?: string } {
-  if (events.length === 0) return { status: 'empty' };
-
-  let newest = 0;
-  for (const ev of events) {
-    const t = new Date(ev.timestamp).getTime();
-    if (!Number.isNaN(t) && t > newest) newest = t;
-  }
-  const newestAt = newest > 0 ? new Date(newest).toISOString() : undefined;
-  if (newest > 0 && now - newest > staleAfterHours * 3_600_000) return { status: 'stale', newestAt };
-  return { status: warnings.length > 0 ? 'degraded' : 'ok', newestAt };
-}
 
 /** Order used to find the worst status across all sources (higher = worse). */
 const SEVERITY: Record<HealthStatus, number> = {

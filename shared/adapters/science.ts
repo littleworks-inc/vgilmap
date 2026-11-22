@@ -3,7 +3,7 @@
  * Normalizes NOAA SWPC solar flares, NASA DONKI geomagnetic storms, and NASA NeoWs asteroids.
  */
 import type { VigilEvent, Severity } from '../types';
-import { addWarning } from './source-warnings';
+import type { NormalizeResult } from './result';
 
 // ── Solar Flare normalizer (NOAA SWPC GOES X-ray flares) ───
 
@@ -162,10 +162,8 @@ function normalizeNeo(data: unknown): VigilEvent[] {
 
 // ── Main export ───────────────────────────────────────────
 
-export async function fetchScience(): Promise<VigilEvent[]> {
-  const res = await fetch('/api/science');
-  if (!res.ok) throw new Error(`/api/science ${res.status}`);
-  const { flr, gst, neo } = await res.json();
+export function normalizeScience({ flr, gst, neo }: { flr: unknown; gst: unknown; neo: unknown }): NormalizeResult {
+  const warnings: string[] = [];
 
   // The proxy returns null for an upstream NASA endpoint that failed.
   const failed = [
@@ -174,7 +172,7 @@ export async function fetchScience(): Promise<VigilEvent[]> {
     neo == null && 'asteroids',
   ].filter(Boolean) as string[];
   if (failed.length === 3) throw new Error('all NASA feeds unavailable (check NASA_API_KEY / rate limit)');
-  if (failed.length > 0) addWarning('science', `NASA feed unavailable: ${failed.join(', ')}`);
+  if (failed.length > 0) warnings.push(`NASA feed unavailable: ${failed.join(', ')}`);
 
   // None of these happen at a place on Earth, so none belong on the map. Flag them so they stay in
   // lists (and the Data Health counts) without being plotted at a made-up position.
@@ -184,7 +182,8 @@ export async function fetchScience(): Promise<VigilEvent[]> {
     ...normalizeNeo(neo),
   ].map(e => ({ ...e, metadata: { ...e.metadata, unlocated: true } }));
 
-  return all.sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-  );
+  return {
+    events: all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    warnings,
+  };
 }

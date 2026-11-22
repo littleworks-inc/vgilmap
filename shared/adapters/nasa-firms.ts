@@ -98,14 +98,8 @@ function acqToISO(date: string, time: string): string {
 
 // ─── Main fetch ────────────────────────────────────────────
 
-export async function fetchNASAFirms(): Promise<VigilEvent[]> {
-  const response = await fetch('/api/firms');
-
-  if (!response.ok) {
-    throw new Error(`NASA FIRMS fetch failed: ${response.status} ${response.statusText}`);
-  }
-
-  const csv = await response.text();
+/** Normalize the FIRMS CSV (already trimmed to the strongest detections). */
+export function normalizeFirms(csv: string): VigilEvent[] {
 
   // FIRMS returns HTML error pages when the key is invalid or rate-limited
   if (csv.trim().startsWith('<')) {

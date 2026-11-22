@@ -1,58 +1,38 @@
 /**
  * VigilMap Public REST API — /api/v1/summary
  *
- * Returns event counts by domain and severity.
- * Useful for dashboards, status widgets, and health checks.
+ * Counts by domain, severity and location precision over the FULL filtered dataset (same
+ * pipeline and filters as /api/v1/events, but without the page of events), plus per-source health.
+ * Accepts the same filters as /api/v1/events (domain, source, severity, since, location).
  */
+import { CORS, cacheControl, runPipeline } from '../_lib/pipeline';
+
 export const config = { runtime: 'edge' };
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-};
+
 export default async function handler(req: Request): Promise<Response> {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   try {
-    // Fetch from our own events endpoint
-    const base = new URL(req.url);
-    const eventsUrl = `${base.origin}/api/v1/events?limit=100`;
-    const res = await fetch(eventsUrl);
-    if (!res.ok) throw new Error(`events fetch failed: ${res.status}`);
-    const json = await res.json();
-    const events: any[] = json.data ?? [];
-    const byDomain: Record<string, number> = {};
-    const bySeverity: Record<string, number> = {};
-    for (const e of events) {
-      byDomain[e.domain] = (byDomain[e.domain] ?? 0) + 1;
-      bySeverity[e.severity] = (bySeverity[e.severity] ?? 0) + 1;
-    }
-    const topEvents = events
-      .filter(e => e.severity === 'critical' || e.severity === 'high')
-      .slice(0, 5)
-      .map(e => ({ id: e.id, title: e.title, severity: e.severity, domain: e.domain, location: e.location.label }));
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        generated: new Date().toISOString(),
-        total_events: events.length,
-        by_domain: byDomain,
-        by_severity: bySeverity,
-        top_events: topEvents,
-      }),
-      {
-        status: 200,
-        headers: {
-          ...CORS,
-          'Content-Type': 'application/json',
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
-        },
-      }
-    );
+    const { body } = await runPipeline(new URL(req.url).searchParams);
+    const { summary, sources } = body;
+    const payload = {
+      ok: body.ok,
+      version: body.version,
+      generated: body.generated,
+      total_events: summary.total,
+      total_unfiltered: body.total_unfiltered,
+      by_domain: summary.by_domain,
+      by_severity: summary.by_severity,
+      by_precision: summary.by_precision,
+      top_events: summary.top_events,
+      sources,
+    };
+    return new Response(JSON.stringify(payload), {
+      status: body.ok ? 200 : 503,
+      headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': cacheControl(body) },
+    });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ ok: false, error: String(err) }),
-      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ ok: false, error: String(err) }), {
+      status: 500, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    });
   }
 }

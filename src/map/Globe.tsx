@@ -12,6 +12,7 @@
  *   onEventClick – called with the clicked event
  */
 
+import { PRECISION_META } from '../../shared/pipeline/precision';
 import { useEffect, useRef, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -131,6 +132,7 @@ function eventsToGeoJSON(
         timestamp: ev.timestamp,
         description: ev.description,
         sourceUrl: ev.sourceUrl,
+        precision: ev.location.precision ?? 'exact',
         // Serialised as JSON strings — MapLibre flattens nested objects
         metadata: JSON.stringify(ev.metadata ?? {}),
         tags: JSON.stringify(ev.tags ?? []),
@@ -169,6 +171,13 @@ function renderPopup(props: PopupProps): string {
   const domainColor  = POPUP_DOMAIN_COLORS[props.domain]  ?? '#6b7280';
   const domainIcon   = POPUP_DOMAIN_ICONS[props.domain]   ?? '🌐';
   const severityColor = POPUP_SEVERITY_COLORS[props.severity] ?? '#6b7280';
+
+  // Say so when the position is an estimate, so a dot is never read as "it happened exactly here".
+  const precision = props.precision as string | undefined;
+  const pm = precision === 'area' || precision === 'country' ? PRECISION_META[precision] : null;
+  const precisionNote = pm
+    ? `<div style="color:#94a3b8;font-size:11px;margin-bottom:6px;line-height:1.4;">📍 <b>${esc(pm.label)}</b> — ${esc(pm.hint)}</div>`
+    : '';
 
   // ── secondary info line (domain / category aware) ───────
   let secondary = '';
@@ -293,6 +302,8 @@ function renderPopup(props: PopupProps): string {
       </div>
 
       <div style="color:#64748b;font-size:11px;margin-bottom:6px;">${ts}</div>
+
+      ${precisionNote}
 
       ${desc ? `<div style="color:#94a3b8;font-size:12px;margin-bottom:8px;line-height:1.4;">${esc(desc)}</div>` : ''}
 

@@ -79,19 +79,12 @@ function extractRegion(place: string): { country: string; region: string } {
 
 // ─── Main fetch function ───────────────────────────────────
 
-const USGS_FEED_URL =
+export const USGS_FEED_URL =
   'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson';
 
-export async function fetchUSGSEarthquakes(): Promise<VigilEvent[]> {
-  const response = await fetch(USGS_FEED_URL);
-
-  if (!response.ok) {
-    throw new Error(`USGS fetch failed: ${response.status} ${response.statusText}`);
-  }
-
-  const feed: USGSFeed = await response.json();
-
-  return feed.features
+/** Normalize the USGS all_day GeoJSON feed. */
+export function normalizeUSGS(feed: USGSFeed): VigilEvent[] {
+  return (feed.features ?? [])
     .filter(f => f.geometry && f.properties.mag !== null)
     .map((feature): VigilEvent => {
       const props = feature.properties;

@@ -10,8 +10,8 @@
  * behind GDELT's 20+ second wait.
  */
 import type { VigilEvent, Severity } from '../types';
-import { gdeltFetch, noteIfStale } from './gdelt-queue';
-import { addWarning } from './source-warnings';
+import type { NormalizeResult, NewsInput } from './result';
+import { feedWarnings } from './result';
 import { countryName, findCountries } from './countries';
 
 // ─── Shared helpers ────────────────────────────────────────
@@ -44,16 +44,8 @@ function place(text: string) {
 
 // ─── Source 1: news RSS ────────────────────────────────────
 
-interface NewsItem { title: string; link: string; date: string; description: string; feed: string }
-
-export async function fetchConflictNews(): Promise<VigilEvent[]> {
-  const res = await fetch('/api/conflict-rss');
-  if (!res.ok) throw new Error(`conflict-rss proxy ${res.status}`);
-  const json = (await res.json()) as { items?: NewsItem[]; feeds?: Array<{ name: string; ok: boolean }> };
-
-  const failed = (json.feeds ?? []).filter(f => !f.ok).map(f => f.name);
-  if (failed.length > 0) addWarning('conflict-rss', `${failed.join(', ')} feed unavailable`);
-
+export function normalizeConflictNews(json: NewsInput): NormalizeResult {
+  const warnings = feedWarnings(json.feeds);
   const events: VigilEvent[] = [];
   for (const item of json.items ?? []) {
     const location = place(`${item.title} ${item.description}`);
@@ -74,7 +66,7 @@ export async function fetchConflictNews(): Promise<VigilEvent[]> {
       metadata: {},
     });
   }
-  return events;
+  return { events, warnings };
 }
 
 // ─── Source 2: GDELT ───────────────────────────────────────
@@ -87,14 +79,10 @@ interface GDELTArticle {
   sourcecountry: string;
 }
 
-export async function fetchGDELT(): Promise<VigilEvent[]> {
-  const res = await gdeltFetch('/api/gdelt');
-  if (!res.ok) throw new Error(`gdelt proxy ${res.status}`);
-  noteIfStale('gdelt', res);
-  const json = await res.json();
+export function normalizeGDELT(json: { articles?: GDELTArticle[] }): VigilEvent[] {
 
   const events: VigilEvent[] = [];
-  for (const a of (json.articles ?? []) as GDELTArticle[]) {
+  for (const a of json.articles ?? []) {
     if (!a.title) continue;
     const location = place(a.title);
     if (!location) continue;

@@ -17,6 +17,14 @@ import type { VigilEvent, Severity } from '../types';
 
 // ─── NOAA API types ────────────────────────────────────────
 
+/** The slice of GeoJSON geometry we read (kept local so shared/ has no type-package dependency). */
+type Geometry =
+  | { type: 'Point'; coordinates: number[] }
+  | { type: 'MultiPoint' | 'LineString'; coordinates: number[][] }
+  | { type: 'Polygon' | 'MultiLineString'; coordinates: number[][][] }
+  | { type: 'MultiPolygon'; coordinates: number[][][][] }
+  | { type: 'GeometryCollection'; geometries: Geometry[] };
+
 interface NOAAAlertProperties {
   id: string;
   areaDesc: string;
@@ -44,7 +52,7 @@ interface NOAAAlertProperties {
 interface NOAAAlertFeature {
   type: 'Feature';
   id: string;
-  geometry: GeoJSON.Geometry | null;
+  geometry: Geometry | null;
   properties: NOAAAlertProperties;
 }
 
@@ -82,7 +90,7 @@ function certaintyToConfidence(certainty: string): number {
  * Extract a representative lat/lng from NOAA geometry.
  * Falls back to a rough US centre if geometry is absent.
  */
-function getCentroid(geometry: GeoJSON.Geometry | null): { lat: number; lng: number } | null {
+function getCentroid(geometry: Geometry | null): { lat: number; lng: number } | null {
   if (!geometry) return null;
 
   if (geometry.type === 'Point') {
@@ -93,7 +101,7 @@ function getCentroid(geometry: GeoJSON.Geometry | null): { lat: number; lng: num
   // For Polygon / MultiPolygon, compute bbox centre
   const coords: number[][] = [];
 
-  function collectCoords(g: GeoJSON.Geometry) {
+  function collectCoords(g: Geometry) {
     if (g.type === 'Point') {
       coords.push(g.coordinates as number[]);
     } else if (g.type === 'MultiPoint' || g.type === 'LineString') {
@@ -121,36 +129,20 @@ function getCentroid(geometry: GeoJSON.Geometry | null): { lat: number; lng: num
 
 // ─── Main fetch ────────────────────────────────────────────
 
-// In dev: Vite proxies /api/noaa → https://api.weather.gov and injects the
-// required User-Agent header server-side (browsers cannot set User-Agent).
-// In production: point this at a Vercel Edge Function that does the same.
-// message_type=alert filters out Update/Cancel/etc. messages.
-// NWS /alerts/active does NOT support a "limit" parameter — omit it entirely.
-const NOAA_URL = '/api/noaa?message_type=alert';
-
-export async function fetchNOAAAlerts(): Promise<VigilEvent[]> {
-  const response = await fetch(NOAA_URL);
-
-  if (!response.ok) {
-    // Log the full body so we can see exactly what NWS is complaining about
-    const body = await response.text().catch(() => '(no body)');
-    console.error('[NOAA] error body:', body);
-    throw new Error(`NOAA fetch failed: ${response.status} ${response.statusText} — ${body.slice(0, 200)}`);
-  }
-
-  const feed: NOAAAlertFeed = await response.json();
+/** Normalize an NWS active-alerts GeoJSON feed. */
+export function normalizeNOAA(feed: NOAAAlertFeed): VigilEvent[] {
 
   const events: VigilEvent[] = [];
 
-  for (const feature of feed.features) {
+  for (const feature of feed.features ?? []) {
     const props = feature.properties;
 
     // Skip non-actual statuses (exercises, tests, etc.)
     if (props.status !== 'Actual') continue;
 
+    // Many NWS alerts (zone-based) carry no geometry. Keep them: they are real alerts, shown
+    // in the list with their area description, just not placed on the map.
     const centroid = getCentroid(feature.geometry);
-    // Skip alerts without any locatable geometry
-    if (!centroid) continue;
 
     const severity = noaaSeverityToVigilSeverity(props.severity);
     const confidence = certaintyToConfidence(props.certainty);
@@ -182,8 +174,8 @@ export async function fetchNOAAAlerts(): Promise<VigilEvent[]> {
       title: title ?? props.event,
       description: description || `${props.event} in ${props.areaDesc}`,
       location: {
-        lat: centroid.lat,
-        lng: centroid.lng,
+        lat: centroid?.lat ?? 0,
+        lng: centroid?.lng ?? 0,
         country: 'US',
         region: props.areaDesc,
         label: props.areaDesc,
@@ -201,6 +193,7 @@ export async function fetchNOAAAlerts(): Promise<VigilEvent[]> {
         expires: props.expires,
         ends: props.ends,
         message_type: props.messageType,
+        ...(centroid ? {} : { unlocated: true }),
       },
     });
   }

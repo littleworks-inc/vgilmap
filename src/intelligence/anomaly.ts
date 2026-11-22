@@ -1,10 +1,11 @@
 /**
  * anomaly.ts — Statistical anomaly detection for VigilMap
  *
- * Uses Welford's online algorithm to compute a rolling mean and
- * variance from the current event window, then flags geographic
- * cells and domain combinations where current density is a
- * statistically significant deviation (z-score) above baseline.
+ * Finds EVENT CONCENTRATIONS: it compares event counts across the currently populated
+ * 10° geographic cells of each domain (Welford mean/variance, z-score). That is a
+ * within-snapshot comparison, NOT a historical anomaly: there is no per-region, per-source
+ * baseline yet, so a region that is always busy will still stand out. The UI and AI brief
+ * therefore call these "concentrations", not "anomalies".
  *
  * No external dependencies. No backend required.
  * Runs entirely in the browser on the current event array.
@@ -113,11 +114,11 @@ export { DOMAIN_COLORS };
  * e.g. "3 signals — critical: Seismic Japan (3.1σ); significant: Health DRC (2.0σ)"
  */
 export function anomalySummary(signals: AnomalySignal[]): string {
-  if (signals.length === 0) return 'no anomalies detected';
+  if (signals.length === 0) return 'no unusual event concentrations detected';
   const parts = signals.slice(0, 4).map(
     s => `${s.severity} ${s.domain} in ${s.regionLabel} (${s.zscore}σ, ${s.count} events)`
   );
-  return `${signals.length} signal${signals.length > 1 ? 's' : ''} — ${parts.join('; ')}`;
+  return `${signals.length} concentration${signals.length > 1 ? 's' : ''} vs. other regions in this snapshot (not a historical baseline) — ${parts.join('; ')}`;
 }
 
 // ─── Main export ──────────────────────────────────────────
@@ -139,7 +140,7 @@ export function detectAnomalies(events: VigilEvent[]): AnomalySignal[] {
   const groups = new Map<string, Map<string, VigilEvent[]>>();
 
   for (const ev of events) {
-    if (!ev.location?.lat || !ev.location?.lng || !isMappable(ev)) continue;
+    if (!isMappable(ev)) continue; // 0° lat/lng is a valid place; isMappable rejects missing/placeholder locations
     const key = cellKey(ev.location.lat, ev.location.lng);
     if (!groups.has(ev.domain)) groups.set(ev.domain, new Map());
     const domainMap = groups.get(ev.domain)!;

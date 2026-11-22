@@ -109,7 +109,7 @@ export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
     startCooldown();
 
     const anomalyCtx = anomalySignals?.length
-      ? ' Anomaly signals: ' + anomalySummary(anomalySignals)
+      ? ' Event concentrations (relative to other regions now, not historical): ' + anomalySummary(anomalySignals)
       : '';
     const result = await generateBrief(events, 'Global' + anomalyCtx);
 

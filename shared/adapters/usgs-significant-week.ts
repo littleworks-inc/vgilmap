@@ -69,23 +69,13 @@ function extractRegion(place: string): { country: string; region: string } {
 
 // ─── Main fetch ────────────────────────────────────────────
 
-const USGS_SIGNIFICANT_WEEK_URL =
+export const USGS_SIGNIFICANT_WEEK_URL =
   'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_week.geojson';
 
 const MIN_MAGNITUDE = 4.5;
 
-export async function fetchUSGSSignificantWeek(): Promise<VigilEvent[]> {
-  const response = await fetch(USGS_SIGNIFICANT_WEEK_URL);
-
-  if (!response.ok) {
-    throw new Error(
-      `USGS significant_week fetch failed: ${response.status} ${response.statusText}`
-    );
-  }
-
-  const feed: USGSFeed = await response.json();
-
-  return feed.features
+export function normalizeUSGSSignificantWeek(feed: USGSFeed): VigilEvent[] {
+  return (feed.features ?? [])
     .filter(f => f.geometry && f.properties.mag !== null && f.properties.mag >= MIN_MAGNITUDE)
     .map((feature): VigilEvent => {
       const props = feature.properties;

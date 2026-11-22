@@ -9,6 +9,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { VigilEvent } from '../types';
 import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS, isMappable, NO_MAP_LOCATION } from '../types';
 import { SourceLink } from './SourceLink';
+import { PrecisionBadge } from './PrecisionBadge';
 import { ListFilterBar } from './ListFilterBar';
 import { KevGroupHeader } from './KevGroupHeader';
 import { buildListRows } from '../utils/listRows';
@@ -329,6 +330,7 @@ export function Sidebar({
                   <span>{timeAgo(ev.timestamp)}</span>
                   <SourceLink event={ev} />
                   <EventMeta event={ev} />
+                  <PrecisionBadge event={ev} />
                   {/* One consistent marker for every event that is listed but not plotted */}
                   {!isMappable(ev) && (
                     <span

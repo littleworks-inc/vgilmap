@@ -30,7 +30,8 @@ export default defineConfig({
       // blob: in worker-src is required for MapLibre's web worker tile parsing.
       'Content-Security-Policy': [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-eval'",   // MapLibre GL shader compilation
+        // 'unsafe-inline': Vite's dev server injects an inline React Refresh preamble; without it nothing mounts.
+        "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // MapLibre GL shader compilation
         "worker-src blob: 'self'",            // MapLibre tile-parsing web workers
         "style-src 'self' 'unsafe-inline'",  // MapLibre injects inline styles
         "img-src 'self' data: blob: https:", // map tiles + data URIs
@@ -39,24 +40,9 @@ export default defineConfig({
       ].join('; '),
     },
 
+    // The API routes (api/*) run in a separate local server: `npm run dev:api` (see README).
     proxy: {
-      // ── NOAA NWS ──────────────────────────────────────────────────────────
-      // api.weather.gov requires a User-Agent for identification.
-      // Browsers block setting User-Agent in fetch(), so we proxy through
-      // Vite's Node.js dev server, which can inject the header freely.
-      //
-      // In production (Vercel), replace with an Edge Function at /api/noaa.
-      '/api/noaa': {
-        target: 'https://api.weather.gov',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/noaa/, ''),
-        // NWS required format: "(AppName, contact@email.com)"
-        // Do NOT include Accept here — let NWS use its default content negotiation.
-        headers: {
-          'User-Agent': '(VigilMap, contact@vigilmap.app)',
-        },
-      },
-
+      '/api': 'http://127.0.0.1:8787',
     },
   },
 })

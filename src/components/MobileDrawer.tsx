@@ -11,6 +11,7 @@ import { AnomalyPanel } from './AnomalyPanel';
 import { CyberTrendsPanel } from './CyberTrendsPanel';
 import { DataHealthPanel } from './DataHealthPanel';
 import { SourceLink } from './SourceLink';
+import { PrecisionBadge } from './PrecisionBadge';
 import { ListFilterBar } from './ListFilterBar';
 import { KevGroupHeader } from './KevGroupHeader';
 import { buildListRows } from '../utils/listRows';
@@ -124,6 +125,7 @@ export function MobileDrawer({
                       {isMappable(ev) ? (ev.location.label && ` · ${ev.location.label}`) : ` · ${NO_MAP_LOCATION}`}
                     </span>
                     <SourceLink event={ev} />
+                    <PrecisionBadge event={ev} />
                     {unmapped && <span aria-hidden style={{ color: '#7d8ba1' }}>{opened ? 'details ▴' : 'details ▾'}</span>}
                   </div>
 

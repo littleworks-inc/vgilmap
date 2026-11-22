@@ -10,29 +10,38 @@
 
 ## What it does
 
-VigilMap aggregates **8 real-time data sources** into a single dark-mode globe. Events are color-coded by domain, clustered at low zoom, and scored by an anomaly detection engine that surfaces statistically unusual concentrations.
+VigilMap aggregates **13 data sources** (12 core, 1 optional extra) into a single dark-mode globe. Events are colour-coded by domain, clustered at low zoom, and filtered by one time window.
 
-| Domain | Source | Update Freq |
-|--------|--------|-------------|
-| 🌋 Earthquakes | USGS Earthquake Hazards | Every 5 min |
-| 🔥 Wildfires | NASA FIRMS (VIIRS satellite) | Every 3 hrs |
-| 🌩 Weather alerts | NOAA National Weather Service | Live |
-| ⚔️ Conflict | BBC / DW / Al Jazeera RSS + GDELT Doc API (when available) | Every 5 min |
-| 🏥 Disease outbreaks | WHO Disease Outbreak News API | Daily |
-| 🌍 Humanitarian disasters | ReliefWeb Disasters RSS (UN OCHA) | As declared |
-| 🔬 Space weather | NOAA SWPC solar flares (M/X class) + NASA DONKI storms + NASA NeoWs asteroids | Live |
-| 🛡️ Cyber | ransomware.live claims, CISA KEV, Have I Been Pwned breaches, and security-news incident headlines (BleepingComputer, The Hacker News, Krebs, The Record, SecurityWeek, Dark Reading, CyberScoop) | 10 min – 6 hrs |
-| 💰 Economic & ✊ labor | BBC Business / DW / Guardian Economics / Al Jazeera / NPR RSS, filtered to crisis and labor headlines | Every 10 min |
+It is a monitor, not a ground-truth feed: every layer has limits, and each event says how precisely it is located. The table below is generated from `shared/pipeline/sources.ts`, the same definitions the app and API run on.
+
+| Source | Coverage and limits | Location accuracy | Refresh |
+|---|---|---|---|
+| 🌋 USGS 24h | Global earthquakes of every magnitude, last 24 hours | Exact location | every 2 min |
+| 🌋 USGS Significant | Global earthquakes of M4.5+, last 7 days | Exact location | every 15 min |
+| 🌩 NASA FIRMS | Global satellite fire detections, last 24 hours. Sampled: only the ~50 strongest (by radiative power) are kept, and low-confidence detections are dropped | Exact location | every 30 min |
+| 🌩 NOAA Alerts | United States and territories only. Alerts without a polygon are listed but not placed on the map | Area centre | every 5 min |
+| ⚔️ Conflict News (RSS) | English-language headlines (BBC, DW, Al Jazeera, Guardian, NPR) that name a country; placed at that country, not at the event | Country estimate | every 10 min |
+| ⚔️ GDELT Conflict *(optional)* | Global news index; often rate-limited, so treated as an optional extra | Country estimate | every 15 min |
+| 🏥 WHO Outbreak News | Global, but WHO publishes only a few Disease Outbreak News items a month | Country estimate | every 1 h |
+| 🌋 ReliefWeb Disasters | Global UN OCHA disaster declarations (a handful a month), placed at the affected country | Country estimate | every 1 h |
+| 💰 Economic & Labor News | English-language strike and jobs headlines that name a country; placed at that country | Country estimate | every 15 min |
+| 🔬 NASA Space Weather | Solar flares (NOAA, M/X class), geomagnetic storms and near-Earth asteroids. Not tied to a place on Earth, so list-only | No location | every 15 min |
+| 🛡️ Ransomware & KEV | Ransomware victim claims (published by the attackers, unverified; placed at the victim country) and CISA KEV exploited vulnerabilities (no location) | Country estimate | every 15 min |
+| 🛡️ Data Breaches (HIBP) | Breaches catalogued by Have I Been Pwned; the country is guessed from the site domain, otherwise list-only | Country estimate | every 1 h |
+| 🛡️ Cyber Incident News | Headlines from security outlets classified by keywords; the country named in the headline, never the attacker nation | Country estimate | every 10 min |
+
+**Location accuracy.** *Exact* = a measured position (earthquake epicentre, satellite fire pixel). *Area centre* = the middle of an affected area. *Country estimate* = the centre of the country named in a headline or report, **not where it happened**. Events with no real place (CISA KEV, space weather, NOAA alerts without a polygon) are list-only: they appear in the sidebar under **No location**, never on the map. The map popup, list rows and Data Health panel all say which applies.
 
 ---
 
 ## Features
 
 - **Interactive globe** — MapLibre GL, CartoDB Dark Matter tiles, cluster expansion on zoom
-- **Anomaly detection** — Welford's online algorithm finds statistically unusual event concentrations, no ML needed
+- **Event concentrations** — compares event counts across regions in the current snapshot (Welford mean/variance, z-score). This is *not* a historical anomaly detector: there are no per-region baselines yet, so an always-busy region will still stand out
 - **AI World Brief** — NVIDIA NIM (Gemma 4 / MiniMax / Nemotron cascade, via a server-side proxy) summarizes the top 8 events into a concise intelligence brief
 - **Live ticker** — scrolling event feed at the bottom of the map
 - **Mobile responsive** — full-screen map with swipeable bottom drawer on phones
+- **One pipeline** — the app and the public REST API read the same normalized dataset; per-source health, last-good retention and per-source refresh intervals
 - **Public REST API** — `/api/v1/events` and `/api/v1/summary`, free to use
 - **Auto-rotate** — globe slowly drifts when idle, stops on any interaction, resumes after 30s
 - **Zero paid APIs required** — everything works on free tiers out of the box
@@ -55,13 +64,18 @@ curl https://vgilmap.vercel.app/api/v1/summary
 
 ```bash
 git clone https://github.com/littleworks-inc/vgilmap
-cd vigilmap
+cd vgilmap
 npm install
-cp .env.example .env   # add your API keys (optional)
-npm run dev
+cp .env.example .env.local   # add your API keys (all optional)
+
+# Two terminals: the API routes (api/*) run in a local server, and Vite proxies /api to it.
+npm run dev:api              # terminal 1 → http://127.0.0.1:8787 (reads .env.local)
+npm run dev                  # terminal 2 → http://localhost:5173
 ```
 
-Open [localhost:5173](http://localhost:5173).
+Open [localhost:5173](http://localhost:5173). Without `npm run dev:api` the map stays empty, because every data source is served through `/api/v1/events`. (`vercel dev` also works if you have the Vercel CLI.)
+
+Other scripts: `npm test` (vitest), `npm run typecheck` (app **and** `api/`), `npm run lint`, `npm run build`.
 
 ### Environment variables
 
@@ -89,45 +103,47 @@ All edge functions in `api/` deploy automatically. No server configuration neede
 ## Architecture
 
 ```
-src/
-├── adapters/                    # One file per data source → VigilEvent[]
-│   ├── usgs.ts                  # USGS 24h earthquake feed
-│   ├── usgs-significant-week.ts # USGS significant earthquakes (7 days)
-│   ├── nasa-firms.ts            # NASA VIIRS wildfire hotspots
-│   ├── noaa.ts                  # NOAA NWS active weather alerts
-│   ├── gdelt.ts                 # Conflict: GDELT + news RSS (via edge proxies)
-│   ├── who.ts                   # WHO Disease Outbreak News API
-│   ├── reliefweb.ts             # ReliefWeb Disasters RSS (UN OCHA)
-│   ├── economic-news.ts         # Economic & labor news (RSS)
-│   └── gdelt.ts                 # Conflict: news RSS + GDELT
-├── intelligence/
-│   └── anomaly.ts               # Welford online algorithm — no ML, pure math
-├── components/
-│   ├── Sidebar.tsx              # Event list, AI brief, anomaly panel (desktop)
-│   ├── MobileDrawer.tsx         # Swipeable bottom sheet (mobile)
-│   ├── LiveTicker.tsx           # Scrolling event ticker
-│   ├── AnimatedCount.tsx        # Count-up animation on data load
-│   ├── IntelBrief.tsx           # AI world brief (calls /api/brief)
-│   ├── AnomalyPanel.tsx         # Anomaly signal cards
-│   └── DomainFilter.tsx         # Domain toggle bar
-├── map/
-│   └── Globe.tsx                # MapLibre GL map, clusters, popups, idle rotation
-├── hooks/
-│   └── useIsMobile.ts
-└── types/index.ts               # VigilEvent unified schema
+shared/                          # Runs in the browser AND on the server; pure, no network, no secrets
+├── types.ts                     # VigilEvent unified schema, location precision
+├── rss.ts                       # RSS/RDF parser (no DOM)
+├── adapters/                    # One normalizer per source: raw upstream data → VigilEvent[]
+│   ├── usgs.ts, usgs-significant-week.ts, nasa-firms.ts, noaa.ts, who.ts, reliefweb.ts
+│   ├── gdelt.ts                 # conflict news RSS + GDELT
+│   ├── economic-news.ts, science.ts
+│   └── cyber.ts, cyber-breaches.ts, cyber-news.ts, countries.ts
+└── pipeline/
+    ├── sources.ts               # Source definitions: key, freshness, refresh interval, coverage, precision
+    ├── engine.ts                # Runs sources; keeps each source's last good data; per-source health
+    ├── query.ts                 # Merge + dedupe, filters, pagination, summaries (totals before pagination)
+    ├── health.ts                # ok / degraded / stale / empty / error classifier
+    └── precision.ts             # Location precision labels
 
-api/                             # Vercel edge functions — server-side proxies
-├── gdelt.ts                     # GDELT proxy with 3-timespan retry logic
-├── conflict-rss.ts              # BBC / DW / Guardian RSS proxy
-├── noaa.ts                      # NOAA proxy (NWS requires User-Agent header)
-└── v1/
-    ├── events.ts                # Public REST API — all events with filtering
-    └── summary.ts               # Public REST API — counts by domain/severity
+api/                             # Vercel edge functions (server only: upstream URLs and secrets live here)
+├── v1/events.ts                 # THE dataset: app and public API. ?source= selects sources
+├── v1/summary.ts                # Counts over the full filtered dataset + source health
+├── _lib/sources.ts              # Upstream fetching bound to the shared normalizers
+├── _lib/pipeline.ts             # runPipeline + cache headers
+├── firms.ts, cyber.ts, ...      # Raw upstream proxies, called in-process by _lib/sources.ts
+├── brief.ts                     # AI brief (NVIDIA NIM)
+└── cyber-trends.ts, cron/       # Redis-backed cyber history (optional)
+
+src/                             # The app
+├── data/pipeline.ts             # fetchSource(key): one source of /api/v1/events
+├── intelligence/anomaly.ts      # Event concentrations
+├── components/, map/, hooks/, utils/, health/
+└── App.tsx                      # Loads each source on its own interval; keeps last good data
+
+tests/                           # vitest: engine, query/pagination, normalizers, API end-to-end
+scripts/                         # dev-api.ts (local API server), backfill-cyber.ts
 ```
+
+**Data flow.** `api/_lib/sources.ts` fetches each upstream and passes the raw data to the shared normalizer. `shared/pipeline/engine.ts` runs the sources, stamps location precision, classifies health, and remembers each source's last good result. `api/v1/events` merges, filters and paginates. The app requests one source at a time (`/api/v1/events?source=<key>`), so a slow source never blocks the rest, and each source refreshes on its own interval (2 min for earthquakes up to 1 h for WHO). If a refresh fails, that source's last good events stay on the map, flagged *Stale · refresh failed* in Data Health. The edge cache TTL follows the same per-source interval.
+
+**Last-good data** is kept in memory per function instance and in the browser, so it survives a flaky upstream but not a cold start. Durable storage is only used for cyber history (Upstash Redis).
 
 ### Unified event schema
 
-Every adapter normalizes its source data into `VigilEvent`:
+Every normalizer (`shared/adapters/*`) turns its source data into `VigilEvent`:
 
 ```typescript
 interface VigilEvent {
@@ -139,6 +155,7 @@ interface VigilEvent {
   title: string
   description: string
   location: {
+    precision?: 'exact' | 'area' | 'country' | 'unknown'   // set by the pipeline
     lat: number
     lng: number
     country: string
@@ -153,14 +170,15 @@ interface VigilEvent {
 }
 ```
 
-### How anomaly detection works
+### How event concentrations work
 
-`src/intelligence/anomaly.ts` runs entirely in the browser with zero external dependencies:
+`src/intelligence/anomaly.ts` runs in the browser with no dependencies. It is a within-snapshot comparison, **not** a historical anomaly detector:
 
-1. Groups events by domain + 10°×10° geographic cell
-2. Runs **Welford's online algorithm** to compute rolling mean + stddev per domain
-3. Z-scores each cell: `z = (count - mean) / stddev`
-4. Returns signals above threshold, labeled in plain English: Mild / Elevated / Extreme
+1. Groups mappable events by domain + 10°×10° geographic cell (list-only events are excluded)
+2. Computes Welford mean and standard deviation of per-cell counts, per domain
+3. Z-scores each cell: `z = (count - mean) / stddev` and reports cells above the threshold
+
+It says "this region has more events than other regions right now", not "this is unusual for this region". True anomalies need per-region, per-source baselines, which need stored history.
 
 ---
 
@@ -170,44 +188,47 @@ Free to use, no API key required.
 
 ### GET /api/v1/events
 
+The same dataset the app uses.
+
 ```bash
-# All events
-curl https://vgilmap.vercel.app/api/v1/events
-
-# Filtered
-curl "https://vgilmap.vercel.app/api/v1/events?domain=conflict,health&severity=high&limit=20"
-
-# Since a specific time
-curl "https://vgilmap.vercel.app/api/v1/events?since=2026-02-28T00:00:00Z"
+curl "https://vgilmap.vercel.app/api/v1/events?severity=high&limit=10"
+curl "https://vgilmap.vercel.app/api/v1/events?domain=cyber&location=nomap"   # list-only events
+curl "https://vgilmap.vercel.app/api/v1/events?source=usgs-day,noaa&limit=1000&offset=1000"
 ```
-
-**Query params:**
 
 | Param | Type | Description |
 |-------|------|-------------|
 | `domain` | string | Comma-separated: `disaster`, `climate`, `health`, `conflict`, `economic`, `labor`, `science`, `cyber` |
+| `source` | string | Comma-separated source keys (see `shared/pipeline/sources.ts`). Default: every source except the optional GDELT extra |
+| `optional` | `1` | Include optional sources in a whole-dataset request |
 | `severity` | string | Minimum level: `info`, `low`, `medium`, `high`, `critical` |
-| `limit` | integer | Max results (default + max: 100) |
 | `since` | ISO datetime | Only events after this timestamp |
+| `location` | `map` / `nomap` | Only events with / without a place on the map |
+| `limit`, `offset` | integer | Page size (default 100, max 1000) and start; use `next_offset` to continue |
 
-**Response:**
+`total` and `summary` describe **everything matching the filters, before pagination**. `sources` reports each source's health, whether it is being served from retained (stale) data, its coverage and its location precision. The response is `503` (never cached) only when no selected source can serve anything.
+
+**Response (abridged):**
 ```json
 {
   "ok": true,
-  "count": 47,
-  "total": 312,
-  "generated": "2026-02-28T12:00:00.000Z",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "count": 10,
+  "total": 665,
+  "total_unfiltered": 665,
+  "next_offset": 10,
+  "summary": { "total": 665, "by_domain": {}, "by_severity": {}, "by_precision": {}, "top_events": [] },
+  "sources": [
+    { "key": "usgs-day", "status": "ok", "count": 216, "retained": false,
+      "precision": "exact", "coverage": "Global earthquakes of every magnitude, last 24 hours",
+      "refreshSeconds": 120, "warnings": [] }
+  ],
   "data": [
     {
-      "id": "usgs-nc75209241",
-      "domain": "disaster",
-      "category": "earthquake",
-      "severity": "medium",
+      "id": "usgs-nc75209241", "domain": "disaster", "category": "earthquake", "severity": "medium",
       "title": "M 4.2 - 14km NNE of Ridgecrest, CA",
-      "location": { "lat": 35.7, "lng": -117.6, "label": "Ridgecrest, CA" },
-      "source": "USGS",
-      "timestamp": "2026-02-28T11:43:00Z"
+      "location": { "precision": "exact", "lat": 35.7, "lng": -117.6, "label": "Ridgecrest, CA" },
+      "source": "USGS", "timestamp": "2026-02-28T11:43:00Z"
     }
   ]
 }
@@ -219,7 +240,7 @@ curl "https://vgilmap.vercel.app/api/v1/events?since=2026-02-28T00:00:00Z"
 curl https://vgilmap.vercel.app/api/v1/summary
 ```
 
-Returns event counts by domain and severity, plus the top 5 critical/high events.
+Counts by domain, severity and location precision over the **full** filtered dataset (not just one page), the top 5 critical/high events, and per-source health. Accepts the same filters as `/api/v1/events`.
 
 Full spec: [`/openapi.json`](https://vgilmap.vercel.app/openapi.json)
 
@@ -227,11 +248,12 @@ Full spec: [`/openapi.json`](https://vgilmap.vercel.app/openapi.json)
 
 ## Adding a new data source
 
-1. Create `src/adapters/your-source.ts` and export `fetchYourSource(): Promise<VigilEvent[]>`
-2. Add it to the `ADAPTERS` array in `src/App.tsx`
-3. If the source blocks browser CORS requests, add a proxy at `api/your-source.ts`
+1. **Normalizer:** `shared/adapters/your-source.ts` exports `normalizeYourSource(raw): VigilEvent[]` (or `{ events, warnings }`). Pure: no `fetch`, no DOM. Throw if the raw data is unusable as a whole.
+2. **Definition:** add an entry to `SOURCE_META` in `shared/pipeline/sources.ts`: key, label, domain, `staleAfterHours`, `refreshSeconds`, default `precision` and a plain-words `coverage`.
+3. **Loader:** add the upstream fetch to `api/_lib/sources.ts` (secrets are read here or in a proxy under `api/`, never in the browser).
+4. **Test:** add a normalizer test in `tests/` with a real sample of the upstream data.
 
-The app handles adapter failures gracefully — if one throws, the rest keep running.
+The app, the public API, Data Health, the legend and the README table pick it up from there. A source that fails shows as *Down* (or *Stale · refresh failed* with its last good data) and never affects the others.
 
 ---
 
@@ -245,7 +267,8 @@ The app handles adapter failures gracefully — if one throws, the rest keep run
 | Fonts | Protomaps Noto Sans PBF |
 | Deployment | Vercel edge functions + CDN |
 | AI | NVIDIA NIM (OpenAI-compatible API) via edge proxy |
-| Anomaly | Welford's algorithm, pure TypeScript |
+| Event concentrations | Welford's algorithm, pure TypeScript |
+| Tests | Vitest |
 
 ---
 

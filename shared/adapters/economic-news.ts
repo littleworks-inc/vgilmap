@@ -9,10 +9,9 @@
  * dropped: they are mostly corporate or global news that happens to match a keyword.
  */
 import type { VigilEvent, Severity, Domain } from '../types';
-import { addWarning } from './source-warnings';
+import type { NormalizeResult, NewsInput } from './result';
+import { feedWarnings } from './result';
 import { countryName, findCountries } from './countries';
-
-interface NewsItem { title: string; link: string; date: string; description: string; feed: string }
 
 function hashId(s: string): string {
   let h = 0;
@@ -33,14 +32,8 @@ function domainFromTitle(title: string): Domain {
     : 'economic';
 }
 
-export async function fetchEconomicNews(): Promise<VigilEvent[]> {
-  const res = await fetch('/api/economic-rss');
-  if (!res.ok) throw new Error(`economic-rss proxy ${res.status}`);
-  const json = (await res.json()) as { items?: NewsItem[]; feeds?: Array<{ name: string; ok: boolean }> };
-
-  const failed = (json.feeds ?? []).filter(f => !f.ok).map(f => f.name);
-  if (failed.length > 0) addWarning('economic-news', `${failed.join(', ')} feed unavailable`);
-
+export function normalizeEconomicNews(json: NewsInput): NormalizeResult {
+  const warnings = feedWarnings(json.feeds);
   const events: VigilEvent[] = [];
   const seen = new Set<string>();
   for (const item of json.items ?? []) {
@@ -69,5 +62,5 @@ export async function fetchEconomicNews(): Promise<VigilEvent[]> {
       metadata: {},
     });
   }
-  return events;
+  return { events, warnings };
 }

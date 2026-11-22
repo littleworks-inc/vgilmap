@@ -8,10 +8,9 @@
  * headline; headlines naming none are `unlocated` (list only).
  */
 import type { VigilEvent, Severity } from '../types';
-import { addWarning } from './source-warnings';
+import type { NormalizeResult, NewsInput } from './result';
+import { feedWarnings } from './result';
 import { countryName, findCountries } from './countries';
-
-interface NewsItem { title: string; link: string; date: string; description: string; feed: string }
 
 interface Kind { category: string; label: string; severity: Severity }
 
@@ -88,14 +87,8 @@ function hashId(s: string): string {
   return Math.abs(h).toString(36);
 }
 
-export async function fetchCyberNews(): Promise<VigilEvent[]> {
-  const res = await fetch('/api/cyber-news');
-  if (!res.ok) throw new Error(`cyber-news proxy ${res.status}`);
-  const json = (await res.json()) as { items?: NewsItem[]; feeds?: Array<{ name: string; ok: boolean }> };
-
-  const failed = (json.feeds ?? []).filter(f => !f.ok).map(f => f.name);
-  if (failed.length > 0) addWarning('cyber-news', `${failed.join(', ')} feed unavailable`);
-
+export function normalizeCyberNews(json: NewsInput): NormalizeResult {
+  const warnings = feedWarnings(json.feeds);
   const events: VigilEvent[] = [];
   const seen = new Set<string>();
   for (const item of json.items ?? []) {
@@ -125,5 +118,5 @@ export async function fetchCyberNews(): Promise<VigilEvent[]> {
       metadata: { kind: kind.label, ...(victim ? { impacted: victim } : {}), ...(country ? {} : { unlocated: true }) },
     });
   }
-  return events;
+  return { events, warnings };
 }

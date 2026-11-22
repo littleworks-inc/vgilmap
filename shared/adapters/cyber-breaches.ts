@@ -45,10 +45,7 @@ function severity(count: number, sensitive: boolean): Severity {
 const compact = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}K` : String(n);
 
-export async function fetchCyberBreaches(): Promise<VigilEvent[]> {
-  const res = await fetch('/api/breaches');
-  if (!res.ok) throw new Error(`breaches proxy ${res.status}`);
-  const { breaches } = (await res.json()) as { breaches?: Breach[] };
+export function normalizeBreaches({ breaches }: { breaches?: Breach[] }): VigilEvent[] {
 
   return (breaches ?? []).map((b): VigilEvent => {
     const code = countryFromDomain(b.domain);

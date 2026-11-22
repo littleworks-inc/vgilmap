@@ -13,7 +13,7 @@
 import type { VigilEvent, Severity } from '../types';
 import { countryName, findCountries } from './countries';
 
-const DON_URL =
+export const DON_URL =
   'https://www.who.int/api/news/diseaseoutbreaknews' +
   '?$select=Title,UrlName,ItemDefaultUrl,PublicationDateAndTime,Summary' +
   '&$orderby=PublicationDateAndTime%20desc&$top=30';
@@ -44,10 +44,7 @@ function diseaseOf(title: string): string {
   return title.split(/\s[-–—]\s|,/)[0].trim();
 }
 
-export async function fetchWHOOutbreaks(): Promise<VigilEvent[]> {
-  const res = await fetch(DON_URL, { headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error(`WHO DON API returned ${res.status}`);
-  const json = (await res.json()) as { value?: DONItem[] };
+export function normalizeWHO(json: { value?: DONItem[] }): VigilEvent[] {
   const items = json.value ?? [];
 
   const events: VigilEvent[] = [];

@@ -10,6 +10,7 @@
  */
 import type { VigilEvent, Severity, Domain } from '../types';
 import { countryName, findCountries } from './countries';
+import { decodeEntities, plain, tagText } from '../rss';
 
 interface Kind {
   domain: Domain;
@@ -40,31 +41,33 @@ const KINDS: Record<string, Kind> = {
 };
 const DEFAULT_KIND: Kind = { domain: 'disaster', category: 'other', label: 'Disaster', severity: 'medium' };
 
-/** The description is HTML-escaped HTML; unwrap it and pull out the pieces we need. */
+/** The description is HTML-escaped HTML; decode it and pull out the pieces we need (no DOM needed). */
 function parseDescription(raw: string): { countries: string; glide: string; text: string } {
-  const doc = new DOMParser().parseFromString(raw, 'text/html');
-  const countries = doc.querySelector('.tag.country')?.textContent?.replace(/^Affected countr(?:y|ies):\s*/i, '').trim() ?? '';
-  const glide = doc.querySelector('.tag.glide')?.textContent?.replace(/^Glide:\s*/i, '').trim() ?? '';
-  const text = (doc.querySelector('p')?.textContent ?? doc.body.textContent ?? '').replace(/\s+/g, ' ').trim();
+  const html = decodeEntities(raw);
+  const field = (cls: string, prefix: RegExp) =>
+    plain(html.match(new RegExp(`class="tag ${cls}"[^>]*>([\\s\\S]*?)<\\/div>`, 'i'))?.[1] ?? '').replace(prefix, '').trim();
+  const countries = field('country', /^Affected countr(?:y|ies):\s*/i);
+  const glide = field('glide', /^Glide:\s*/i);
+  const para = html.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1];
+  const text = plain(para ?? html.replace(/<div class="tag[\s\S]*?<\/div>/gi, ' '));
   return { countries, glide, text };
 }
 
-export async function fetchReliefWeb(): Promise<VigilEvent[]> {
-  const res = await fetch('/api/reliefweb');
-  if (!res.ok) throw new Error(`ReliefWeb proxy ${res.status}`);
-  const xml = new DOMParser().parseFromString(await res.text(), 'text/xml');
-  if (xml.querySelector('parsererror')) throw new Error('ReliefWeb RSS could not be parsed');
+/** Normalize ReliefWeb's Disasters RSS (raw XML text). */
+export function normalizeReliefWeb(xml: string): VigilEvent[] {
+  if (!/<(rss|feed)\b/i.test(xml)) throw new Error('ReliefWeb RSS could not be parsed');
 
   const events: VigilEvent[] = [];
-  for (const item of Array.from(xml.querySelectorAll('item'))) {
-    const title = item.querySelector('title')?.textContent?.trim();
-    const link = item.querySelector('link')?.textContent?.trim() ?? 'https://reliefweb.int';
-    const pub = item.querySelector('pubDate')?.textContent?.trim();
+  for (const m of xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)) {
+    const chunk = m[1];
+    const title = plain(tagText(chunk, 'title'));
+    const link = decodeEntities(tagText(chunk, 'link')) || 'https://reliefweb.int';
+    const pub = tagText(chunk, 'pubDate');
     if (!title || !pub) continue;
     const when = new Date(pub);
     if (Number.isNaN(when.getTime())) continue;
 
-    const { countries: countryText, glide, text } = parseDescription(item.querySelector('description')?.textContent ?? '');
+    const { countries: countryText, glide, text } = parseDescription(tagText(chunk, 'description'));
     const kind = KINDS[glide.slice(0, 2).toUpperCase()] ?? DEFAULT_KIND;
     // Prefer the structured "Affected country" field; fall back to the title ("Haiti: Floods - Oct 2026").
     const matches = findCountries(countryText || title);

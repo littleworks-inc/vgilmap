@@ -47,7 +47,7 @@ export function AnomalyPanel({ signals, onSelectSignal }: AnomalyPanelProps) {
       >
         <span style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8',
                        display: 'flex', alignItems: 'center', gap: '6px' }}>
-          ⚡ Anomaly Signals
+          ⚡ Event Concentrations
           {critCount > 0 && (
             <span style={{
               background: '#7c3aed22',

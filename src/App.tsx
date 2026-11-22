@@ -4,9 +4,9 @@
  * Layout:  [Sidebar | DomainFilter + Globe]
  *
  * Data:
- *  - Fetches all adapters in parallel on mount
+ *  - Fetches every source from the shared pipeline (/api/v1/events) in parallel on mount
  *  - De-duplicates events by id across adapters
- *  - Auto-refreshes every 5 minutes
+ *  - Each source refreshes on its own interval (SOURCE_META.refreshSeconds); a failed refresh keeps its last good data
  *  - Domain filter controls which events reach Globe + Sidebar
  */
 
@@ -20,29 +20,16 @@ import { useIsMobile } from './hooks/useIsMobile';
 import { usePersistedBool } from './hooks/usePersistedBool';
 import { readViewState, writeViewState, isDefaultView } from './utils/viewState';
 import { MobileDrawer } from './components/MobileDrawer';
-import { fetchUSGSEarthquakes } from './adapters/usgs';
-import { fetchUSGSSignificantWeek } from './adapters/usgs-significant-week';
-import { fetchNASAFirms } from './adapters/nasa-firms';
-import { fetchNOAAAlerts } from './adapters/noaa';
-import { fetchGDELT, fetchConflictNews } from './adapters/gdelt';
-import { fetchWHOOutbreaks } from './adapters/who';
-import { fetchReliefWeb } from './adapters/reliefweb';
-import { fetchEconomicNews } from './adapters/economic-news';
-import { fetchScience } from './adapters/science';
-import { fetchCyber } from './adapters/cyber';
-import { fetchCyberBreaches } from './adapters/cyber-breaches';
-import { fetchCyberNews } from './adapters/cyber-news';
+import { fetchSource } from './data/pipeline';
+import { SOURCE_META } from '../shared/pipeline/sources';
+import { mergeEvents } from '../shared/pipeline/query';
 import type { CyberFocus, Domain, TimeWindowId, VigilEvent } from './types';
 import { DOMAIN_ICONS, DOMAIN_COLORS, DEFAULT_TIME_WINDOW, isMappable, matchesCyberFocus, timeWindowMs } from './types';
 import { detectAnomalies } from './intelligence/anomaly';
-import { classify } from './health/sourceHealth';
 import type { SourceHealth } from './health/sourceHealth';
-import { clearWarnings, getWarnings } from './adapters/source-warnings';
 import type { AnomalySignal } from './intelligence/anomaly';
 
 // ─── Constants ─────────────────────────────────────────────
-
-const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 const ALL_DOMAINS: Domain[] = [
   'disaster', 'climate', 'health', 'conflict', 'economic', 'labor', 'science', 'cyber',
@@ -72,49 +59,7 @@ function pushEventToURL(id: string | undefined) {
   history.replaceState(null, '', url.toString());
 }
 
-// ─── Adapter registry ──────────────────────────────────────
-
-// `staleAfterHours`: if the newest event is older than this, the source is flagged "stale"
-// in the Data Health panel (it responds, but isn't producing current data).
-const ADAPTERS: Array<{
-  key: string;
-  label: string;
-  domain: Domain;
-  staleAfterHours: number;
-  /** An extra on top of other sources: if it fails it's shown in Data Health, but raises no banner. */
-  optional?: boolean;
-  fetch: () => Promise<VigilEvent[]>;
-}> = [
-  { key: 'usgs-day',   label: 'USGS 24h',        domain: 'disaster', staleAfterHours: 3,   fetch: fetchUSGSEarthquakes },
-  { key: 'usgs-week',  label: 'USGS Significant', domain: 'disaster', staleAfterHours: 168, fetch: fetchUSGSSignificantWeek },
-  { key: 'nasa-firms', label: 'NASA FIRMS',        domain: 'climate',  staleAfterHours: 24,  fetch: fetchNASAFirms },
-  { key: 'noaa',       label: 'NOAA Alerts',       domain: 'climate',  staleAfterHours: 12,  fetch: fetchNOAAAlerts },
-  { key: 'conflict-rss', label: 'Conflict News (RSS)', domain: 'conflict', staleAfterHours: 12, fetch: fetchConflictNews },
-  { key: 'gdelt',      label: 'GDELT Conflict',    domain: 'conflict', staleAfterHours: 24,  optional: true, fetch: fetchGDELT },
-  { key: 'who',        label: 'WHO Outbreak News', domain: 'health',   staleAfterHours: 720, fetch: fetchWHOOutbreaks },
-  { key: 'reliefweb',  label: 'ReliefWeb Disasters', domain: 'disaster', staleAfterHours: 1080, fetch: fetchReliefWeb },
-  { key: 'economic-news', label: 'Economic & Labor News', domain: 'economic', staleAfterHours: 24, fetch: fetchEconomicNews },
-  { key: 'science',    label: 'NASA Space Weather', domain: 'science', staleAfterHours: 168, fetch: fetchScience },
-  { key: 'cyber',      label: 'Ransomware & KEV',  domain: 'cyber',    staleAfterHours: 72,  fetch: fetchCyber },
-  { key: 'cyber-breaches', label: 'Data Breaches (HIBP)', domain: 'cyber', staleAfterHours: 504, fetch: fetchCyberBreaches },
-  { key: 'cyber-news', label: 'Cyber Incident News', domain: 'cyber',  staleAfterHours: 24,  fetch: fetchCyberNews },
-];
-
 // ─── Helpers ───────────────────────────────────────────────
-
-function mergeEvents(arrays: VigilEvent[][]): VigilEvent[] {
-  const seen = new Set<string>();
-  const result: VigilEvent[] = [];
-  for (const arr of arrays) {
-    for (const ev of arr) {
-      if (!seen.has(ev.id)) {
-        seen.add(ev.id);
-        result.push(ev);
-      }
-    }
-  }
-  return result;
-}
 
 function countByDomain(events: VigilEvent[]): Partial<Record<Domain, number>> {
   const counts: Partial<Record<Domain, number>> = {};
@@ -296,7 +241,6 @@ function DomainCountPill({
 export default function App() {
   const [allEvents, setAllEvents]       = useState<VigilEvent[]>([]);
   const [loading, setLoading]           = useState(true);
-  const [errors, setErrors]             = useState<string[]>([]);
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null);
   const [selectedId, setSelectedId]     = useState<string | undefined>(getEventIdFromURL() ?? undefined);
   // The view (time window + hidden domains) survives a refresh: URL > last saved > defaults.
@@ -308,79 +252,83 @@ export default function App() {
 
   const globeContainerRef = useRef<HTMLDivElement>(null);
   const hasDeepLinked     = useRef(false);
-  const loadRunRef        = useRef(0);
+  const loadRunRef        = useRef<Record<string, number>>({});
   const [cyberFocus, setCyberFocus] = useState<CyberFocus | null>(null);
   const [timeWindow, setTimeWindow] = useState<TimeWindowId>(initialView.timeWindow);
   const [sourceHealth, setSourceHealth] = useState<SourceHealth[]>(() =>
-    ADAPTERS.map(a => ({
+    SOURCE_META.map(a => ({
       key: a.key, label: a.label, domain: a.domain, status: 'loading' as const, count: 0, warnings: [], startedAt: Date.now(), optional: a.optional,
+      refreshSeconds: a.refreshSeconds, precision: a.precision, coverage: a.coverage,
     })),
   );
   const lastOkRef = useRef<Map<string, number>>(new Map());
+  // Each source's last successful result: a refresh starts from it, and a failed source keeps showing it.
+  const lastGoodRef = useRef<Map<string, VigilEvent[]>>(new Map());
+  const checkedRef = useRef<Map<string, number>>(new Map());
   // Which events each source returned, so Data Health can show how many are in the current view.
   const [sourceIds, setSourceIds] = useState<Record<string, string[]>>({});
   const isMobile = useIsMobile();
 
-  // ── Fetch all adapters in parallel ──────────────────────
-  const load = useCallback(async () => {
-    const runId = ++loadRunRef.current;
-    setLoading(true);
-    setErrors([]);
-
-    // Render progressively: each source updates the map the moment it returns, so one
-    // slow source (GDELT can take 20s+) never blocks the fast ones (~1s).
-    const bySource: Array<VigilEvent[] | undefined> = new Array(ADAPTERS.length);
-    const errs: string[] = [];
-
-    const publish = () => {
-      const merged = mergeEvents(bySource.filter((a): a is VigilEvent[] => !!a));
-      merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setAllEvents(merged);
-      setLastUpdated(new Date());
-    };
-
-    await Promise.allSettled(
-      ADAPTERS.map(async (adapter, i) => {
-        const startedAt = performance.now();
-        clearWarnings(adapter.key);
-        let patch: Partial<SourceHealth>;
-        try {
-          const events = await adapter.fetch();
-          bySource[i] = events;
-          if (runId === loadRunRef.current) setSourceIds(prev => ({ ...prev, [adapter.key]: events.map(e => e.id) }));
-          const now = Date.now();
-          const warnings = getWarnings(adapter.key);
-          const { status, newestAt } = classify(events, adapter.staleAfterHours, warnings, now);
-          if (events.length > 0) lastOkRef.current.set(adapter.key, now);
-          patch = { status, newestAt, count: events.length, warnings, error: undefined };
-        } catch (reason) {
-          console.error(`[${adapter.label}] failed:`, reason);
-          if (!adapter.optional) errs.push(adapter.label); // optional extras fail quietly
-          patch = {
-            status: 'error', count: 0, newestAt: undefined, warnings: [],
-            error: reason instanceof Error ? reason.message : String(reason),
-          };
-        }
-        if (runId === loadRunRef.current) {
-          const done = { ...patch, durationMs: Math.round(performance.now() - startedAt), checkedAt: Date.now(), lastOkAt: lastOkRef.current.get(adapter.key) };
-          setSourceHealth(prev => prev.map(h => (h.key === adapter.key ? { ...h, ...done } : h)));
-        }
-        if (runId !== loadRunRef.current) return; // a newer refresh superseded this one
-        if (errs.length) setErrors([...errs]);
-        publish();
-        // Overlay goes away as soon as any source has events to show.
-        if (bySource.some(a => a && a.length > 0)) setLoading(false);
-      })
-    );
-    // All sources settled: make sure the overlay is gone even if everything was empty.
-    if (runId === loadRunRef.current) setLoading(false);
+  // ── Load sources from the shared pipeline ───────────────
+  // Each source loads and refreshes independently: a slow one (GDELT can take 20s) never holds back
+  // the fast ones, and each runs on its own interval. Events appear as each source returns.
+  const publish = useCallback(() => {
+    const merged = mergeEvents(SOURCE_META.map(m => ({ events: lastGoodRef.current.get(m.key) ?? [] })));
+    setAllEvents(merged);
+    setLastUpdated(new Date());
   }, []);
+
+  const loadSource = useCallback(async (meta: (typeof SOURCE_META)[number]) => {
+    const run = (loadRunRef.current[meta.key] = (loadRunRef.current[meta.key] ?? 0) + 1);
+    const startedAt = performance.now();
+    checkedRef.current.set(meta.key, Date.now());
+    let patch: Partial<SourceHealth>;
+    try {
+      // Status (ok / degraded / stale / empty / retained) is classified on the server, once, for everyone.
+      const { events, status } = await fetchSource(meta.key);
+      if (run !== loadRunRef.current[meta.key]) return; // a newer refresh of this source superseded this one
+      lastGoodRef.current.set(meta.key, events);
+      setSourceIds(prev => ({ ...prev, [meta.key]: events.map(e => e.id) }));
+      if (events.length > 0) lastOkRef.current.set(meta.key, Date.now());
+      patch = { ...status, retained: status.retained ?? false };
+    } catch (reason) {
+      if (run !== loadRunRef.current[meta.key]) return;
+      console.error(`[${meta.label}] failed:`, reason);
+      // The pipeline could not serve this source at all: keep showing what we already have.
+      const kept = lastGoodRef.current.get(meta.key);
+      patch = {
+        status: 'error', count: kept?.length ?? 0, warnings: [], retained: !!kept && kept.length > 0,
+        error: reason instanceof Error ? reason.message : String(reason),
+      };
+    }
+    setSourceHealth(prev => prev.map(h => (h.key === meta.key ? {
+      ...h, ...patch, durationMs: Math.round(performance.now() - startedAt), checkedAt: Date.now(), lastOkAt: lastOkRef.current.get(meta.key),
+    } : h)));
+    publish();
+    setLoading(false); // the overlay goes away as soon as any source has answered
+  }, [publish]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    await Promise.allSettled(SOURCE_META.map(loadSource));
+    setLoading(false);
+  }, [loadSource]);
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [load]);
+    // Per-source timers. Hidden tabs skip refreshes and catch up when they become visible.
+    const timers = SOURCE_META.map(meta =>
+      setInterval(() => { if (!document.hidden) void loadSource(meta); }, meta.refreshSeconds * 1000),
+    );
+    const onVisible = () => {
+      if (document.hidden) return;
+      for (const meta of SOURCE_META) {
+        if (Date.now() - (checkedRef.current.get(meta.key) ?? 0) >= meta.refreshSeconds * 1000) void loadSource(meta);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { timers.forEach(clearInterval); document.removeEventListener('visibilitychange', onVisible); };
+  }, [load, loadSource]);
 
   // Keep the URL and saved view in sync with the controls.
   const hiddenDomains = useMemo(() => ALL_DOMAINS.filter(d => !activeDomains.has(d)), [activeDomains]);
@@ -450,6 +398,8 @@ export default function App() {
     return out;
   }, [filteredEvents, sourceIds]);
 
+  // Sources that are down (optional extras are shown in Data Health but never raise a banner).
+  const errors = useMemo(() => sourceHealth.filter(h => h.status === 'error' && !h.optional).map(h => h.label), [sourceHealth]);
   const errorMsg = errors.length > 0 ? `${errors.join(', ')} failed` : null;
 
   // ── Fly to event ─────────────────────────────────────────
