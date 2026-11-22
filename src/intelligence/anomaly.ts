@@ -1,11 +1,16 @@
 /**
  * anomaly.ts — Statistical anomaly detection for VigilMap
  *
- * Finds EVENT CONCENTRATIONS: it compares event counts across the currently populated
- * 10° geographic cells of each domain (Welford mean/variance, z-score). That is a
- * within-snapshot comparison, NOT a historical anomaly: there is no per-region, per-source
- * baseline yet, so a region that is always busy will still stand out. The UI and AI brief
- * therefore call these "concentrations", not "anomalies".
+ * Finds EVENT CONCENTRATIONS by comparing counts across the currently populated places of each
+ * domain (Welford mean/variance, z-score). That is a within-snapshot comparison, NOT a historical
+ * anomaly: there is no per-region, per-source baseline yet, so a region that is always busy will
+ * still stand out. The UI and AI brief therefore call these "concentrations", not "anomalies".
+ *
+ * Two kinds, kept apart because they mean different things:
+ *   measured — events at a measured position (exact / area precision), grouped in 10° grid cells.
+ *   reports  — events only known to a COUNTRY (headlines, WHO, ransomware claims), counted per
+ *              country. They are never put on the grid: several unrelated reports that all sit at
+ *              one country's centre point would otherwise look like a geographic cluster.
  *
  * No external dependencies. No backend required.
  * Runs entirely in the browser on the current event array.
@@ -16,7 +21,9 @@ import { DOMAIN_COLORS, DOMAIN_ICONS, isMappable } from '../types';
 // ─── Types ────────────────────────────────────────────────
 
 export interface AnomalySignal {
-  id: string;               // stable key: "domain:cellKey"
+  id: string;               // stable key: "basis:domain:key"
+  /** 'measured' = a cluster of positioned events; 'reports' = how many reports name one country. */
+  basis: 'measured' | 'reports';
   domain: Domain;
   label: string;            // human readable: "🌋 Seismic — Western US"
   count: number;            // events in this cell
@@ -116,90 +123,96 @@ export { DOMAIN_COLORS };
 export function anomalySummary(signals: AnomalySignal[]): string {
   if (signals.length === 0) return 'no unusual event concentrations detected';
   const parts = signals.slice(0, 4).map(
-    s => `${s.severity} ${s.domain} in ${s.regionLabel} (${s.zscore}σ, ${s.count} events)`
+    s => `${s.severity} ${s.domain} ${s.basis === 'reports' ? 'reports naming' : 'cluster in'} ${s.regionLabel.replace(' (reports)', '')} (${s.zscore}σ, ${s.count} ${s.basis === 'reports' ? 'reports' : 'events'})`
   );
-  return `${signals.length} concentration${signals.length > 1 ? 's' : ''} vs. other regions in this snapshot (not a historical baseline) — ${parts.join('; ')}`;
+  return `${signals.length} concentration${signals.length > 1 ? 's' : ''} vs. other regions in this snapshot (not a historical baseline; 'reports' counts how many reports name a country, not a place where something happened) — ${parts.join('; ')}`;
 }
 
 // ─── Main export ──────────────────────────────────────────
 
-/**
- * Analyse events and return anomaly signals sorted by z-score desc.
- *
- * Algorithm:
- *  1. Group events by domain + 10°×10° geographic cell
- *  2. For each domain, compute per-cell event counts
- *  3. Run Welford's algorithm across all cells to get mean + stddev
- *  4. Z-score each cell: z = (count - mean) / stddev
- *  5. Return cells above Z_ELEVATED threshold as AnomalySignal[]
- */
-export function detectAnomalies(events: VigilEvent[]): AnomalySignal[] {
-  if (events.length === 0) return [];
+/** Does this event have a position we measured (or an area we know), as opposed to a country guess? */
+function isMeasured(ev: VigilEvent): boolean {
+  return ev.location.precision !== 'country';
+}
 
-  // Step 1 — group events by domain → cell → events[]
-  const groups = new Map<string, Map<string, VigilEvent[]>>();
+type Groups = Map<string, Map<string, VigilEvent[]>>;
 
-  for (const ev of events) {
-    if (!isMappable(ev)) continue; // 0° lat/lng is a valid place; isMappable rejects missing/placeholder locations
-    const key = cellKey(ev.location.lat, ev.location.lng);
-    if (!groups.has(ev.domain)) groups.set(ev.domain, new Map());
-    const domainMap = groups.get(ev.domain)!;
-    if (!domainMap.has(key)) domainMap.set(key, []);
-    domainMap.get(key)!.push(ev);
-  }
+function addTo(groups: Groups, domain: string, key: string, ev: VigilEvent) {
+  if (!groups.has(domain)) groups.set(domain, new Map());
+  const m = groups.get(domain)!;
+  if (!m.has(key)) m.set(key, []);
+  m.get(key)!.push(ev);
+}
 
+/** Score every group within each domain against the other groups of that domain. */
+function score(
+  groups: Groups,
+  basis: AnomalySignal['basis'],
+  place: (key: string, evs: VigilEvent[]) => { lat: number; lng: number; label: string },
+): AnomalySignal[] {
   const signals: AnomalySignal[] = [];
-
-  // Step 2-5 — per domain, run Welford across cells, z-score each
   for (const [domain, cellMap] of groups) {
     const cells = Array.from(cellMap.entries());
-    if (cells.length < 2) continue; // need ≥2 cells to compute variance
+    if (cells.length < 2) continue; // need ≥2 groups to compute variance
 
-    // Welford pass over all cell counts for this domain
     let state: WelfordState = { n: 0, mean: 0, M2: 0 };
-    for (const [, evs] of cells) {
-      state = welfordUpdate(state, evs.length);
-    }
-
+    for (const [, evs] of cells) state = welfordUpdate(state, evs.length);
     const { mean, stddev } = welfordFinalize(state);
+    if (stddev < 0.5) continue; // all groups equal: nothing stands out
 
-    // If stddev is ~0 all cells are equal — no anomaly
-    if (stddev < 0.5) continue;
-
-    // Score each cell
     for (const [key, evs] of cells) {
       if (evs.length < MIN_EVENTS_FOR_SIGNAL) continue;
-
       const zscore = (evs.length - mean) / stddev;
       if (zscore < Z_ELEVATED) continue;
 
       const severity: AnomalySignal['severity'] =
-        zscore >= Z_CRITICAL    ? 'critical'    :
-        zscore >= Z_SIGNIFICANT ? 'significant' :
-        'elevated';
-
-      const centre = cellCentre(key);
-      const label  = regionLabel(evs, centre.lat, centre.lng);
-
+        zscore >= Z_CRITICAL ? 'critical' : zscore >= Z_SIGNIFICANT ? 'significant' : 'elevated';
+      const where = place(key, evs);
       signals.push({
-        id:          `${domain}:${key}`,
-        domain:      domain as Domain,
-        label:       `${DOMAIN_ICONS[domain as Domain] ?? '🌐'} ${label}`,
-        count:       evs.length,
-        zscore:      Math.round(zscore * 10) / 10,
+        id: `${basis}:${domain}:${key}`,
+        basis,
+        domain: domain as Domain,
+        label: `${DOMAIN_ICONS[domain as Domain] ?? '🌐'} ${where.label}`,
+        count: evs.length,
+        zscore: Math.round(zscore * 10) / 10,
         severity,
-        lat:         centre.lat,
-        lng:         centre.lng,
-        regionLabel: label,
-        events:      evs,
+        lat: where.lat,
+        lng: where.lng,
+        regionLabel: where.label,
+        events: evs,
       });
     }
   }
+  return signals;
+}
 
-  // Sort: critical first, then by zscore desc
-  return signals.sort((a, b) => {
-    const sOrder = { critical: 2, significant: 1, elevated: 0 };
-    const diff = sOrder[b.severity] - sOrder[a.severity];
-    return diff !== 0 ? diff : b.zscore - a.zscore;
-  });
+/**
+ * Analyse events and return concentration signals, critical first then by z-score.
+ *
+ *  1. measured: group positioned events by domain + 10°×10° cell, z-score the cell counts
+ *  2. reports: group country-level events by domain + country, z-score the per-country counts
+ */
+export function detectAnomalies(events: VigilEvent[]): AnomalySignal[] {
+  const cells: Groups = new Map();
+  const countries: Groups = new Map();
+
+  for (const ev of events) {
+    if (!isMappable(ev)) continue; // no real place: never part of a geographic comparison
+    if (isMeasured(ev)) addTo(cells, ev.domain, cellKey(ev.location.lat, ev.location.lng), ev);
+    else addTo(countries, ev.domain, ev.location.country || ev.location.label, ev);
+  }
+
+  const signals = [
+    ...score(cells, 'measured', (key, evs) => {
+      const c = cellCentre(key);
+      return { lat: c.lat, lng: c.lng, label: regionLabel(evs, c.lat, c.lng) };
+    }),
+    ...score(countries, 'reports', (_key, evs) => ({
+      lat: evs[0].location.lat, lng: evs[0].location.lng,
+      label: `${evs[0].location.label || evs[0].location.country} (reports)`,
+    })),
+  ];
+
+  const sOrder = { critical: 2, significant: 1, elevated: 0 };
+  return signals.sort((a, b) => sOrder[b.severity] - sOrder[a.severity] || b.zscore - a.zscore);
 }

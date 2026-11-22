@@ -11,7 +11,7 @@ describe('runSource', () => {
     expect(r.status).toMatchObject({ key: 'a', status: 'ok', count: 2, precision: 'exact' });
     expect(r.status.retained).toBeUndefined();
     expect(r.events).toHaveLength(2);
-    expect(store.get('a')?.events).toHaveLength(2);
+    expect(store.get('a')?.good?.events).toHaveLength(2);
   });
 
   it('marks a source with partial-failure warnings as degraded, and still returns its events', async () => {
@@ -73,7 +73,7 @@ describe('runSource', () => {
 
     it('treats a loader that never answers as failed (and retains)', async () => {
       const store = new MemoryStore();
-      store.set('a', { events: [ev('1')], at: NOW - 60_000 });
+      store.set('a', { good: { events: [ev('1')], at: NOW - 60_000 } });
       const l = loader('a', () => new Promise(() => { /* never settles */ }));
       const r = await runSource(l, store, { now: () => NOW, timeoutMs: 20 });
       expect(r.status).toMatchObject({ status: 'error', retained: true, count: 1 });
@@ -93,5 +93,114 @@ describe('runSources: partial source failures', () => {
     expect(results.map(r => [r.status.key, r.status.status])).toEqual([['good', 'ok'], ['bad', 'error'], ['warn', 'degraded']]);
     expect(results[0].events).toHaveLength(1);
     expect(results[2].events).toHaveLength(1);
+  });
+});
+
+describe('partial failures of multi-feed sources (retained per feed)', () => {
+  const claims = [ev('c1', { source: 'ransomware.live' })];
+  const kev = [ev('k1', { source: 'CISA KEV' })];
+
+  it('a feed that fails keeps ITS previous events instead of shrinking the dataset', async () => {
+    const store = new MemoryStore();
+    let kevUp = true;
+    const l = loader('cyber', () => ({
+      events: kevUp ? [...claims, ...kev] : [...claims],
+      warnings: kevUp ? [] : ['CISA KEV unavailable'],
+      parts: [
+        { name: 'ransomware.live', ok: true, events: claims },
+        { name: 'CISA KEV', ok: kevUp, events: kevUp ? kev : [] },
+      ],
+    }));
+    const first = await runSource(l, store, { now: () => NOW });
+    expect(first.events.map(e => e.id).sort()).toEqual(['c1', 'k1']);
+
+    kevUp = false;
+    const degraded = await runSource(l, store, { now: () => NOW });
+    expect(degraded.events.map(e => e.id).sort()).toEqual(['c1', 'k1']); // was shrinking to ['c1']
+    expect(degraded.status.status).toBe('degraded');
+    expect(degraded.status.warnings.join(' ')).toMatch(/CISA KEV unavailable/);
+    expect(degraded.status.warnings.join(' ')).toMatch(/CISA KEV: refresh failed, showing 1 earlier events/);
+  });
+
+  it('a feed that answers replaces its old events (they are not retained forever)', async () => {
+    const store = new MemoryStore();
+    let second = false;
+    const l = loader('cyber', () => ({
+      events: second ? [ev('c2', { source: 'ransomware.live' })] : claims, warnings: [],
+      parts: [{ name: 'ransomware.live', ok: true, events: second ? [ev('c2', { source: 'ransomware.live' })] : claims }],
+    }));
+    await runSource(l, store, { now: () => NOW });
+    second = true;
+    const r = await runSource(l, store, { now: () => NOW });
+    expect(r.events.map(e => e.id)).toEqual(['c2']);
+  });
+
+  it('keeps the earlier events of a failed feed across several consecutive failures', async () => {
+    const store = new MemoryStore();
+    let up = true;
+    const l = loader('cyber', () => ({
+      events: up ? kev : [], warnings: up ? [] : ['down'],
+      parts: [{ name: 'CISA KEV', ok: up, events: up ? kev : [] }],
+    }));
+    await runSource(l, store, { now: () => NOW });
+    up = false;
+    await runSource(l, store, { now: () => NOW });
+    const third = await runSource(l, store, { now: () => NOW });
+    expect(third.events.map(e => e.id)).toEqual(['k1']);
+  });
+});
+
+describe('source snapshots (reuseFresh)', () => {
+  it('serves a fresh snapshot without calling upstream again, and refetches once it is older than the refresh interval', async () => {
+    const store = new MemoryStore();
+    const c = clock();
+    let calls = 0;
+    const l = loader('a', () => { calls++; return { events: [ev('1')], warnings: [] }; }, { refreshSeconds: 3600 });
+    await runSource(l, store, { now: c.now, reuseFresh: true });
+    c.advance(59 * 60_000);
+    await runSource(l, store, { now: c.now, reuseFresh: true });
+    expect(calls).toBe(1);
+    c.advance(2 * 60_000);
+    await runSource(l, store, { now: c.now, reuseFresh: true });
+    expect(calls).toBe(2);
+  });
+
+  it('concurrent requests share one upstream fetch', async () => {
+    const store = new MemoryStore();
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const l = loader('a', async () => { calls++; await gate; return { events: [ev('1')], warnings: [] }; });
+    const runs = [1, 2, 3].map(() => runSource(l, store, { now: () => NOW, reuseFresh: true }));
+    release();
+    const results = await Promise.all(runs);
+    expect(calls).toBe(1);
+    expect(results.every(r => r.events.length === 1)).toBe(true);
+  });
+
+  it('backs off for a short while after a failure instead of hammering a struggling upstream', async () => {
+    const store = new MemoryStore();
+    const c = clock();
+    let calls = 0;
+    const l = loader('a', () => { calls++; throw new Error('down'); }, { refreshSeconds: 3600 });
+    await runSource(l, store, { now: c.now, reuseFresh: true });
+    c.advance(10_000);
+    await runSource(l, store, { now: c.now, reuseFresh: true });
+    expect(calls).toBe(1);
+    c.advance(25_000); // past the 30s back-off
+    await runSource(l, store, { now: c.now, reuseFresh: true });
+    expect(calls).toBe(2);
+  });
+
+  it('keeps reporting the ORIGINAL data time for retained data served from a snapshot', async () => {
+    const store = new MemoryStore();
+    const c = clock();
+    let fail = false;
+    const l = loader('a', () => { if (fail) throw new Error('boom'); return { events: [ev('1')], warnings: [] }; }, { refreshSeconds: 60 });
+    await runSource(l, store, { now: c.now, reuseFresh: true });
+    fail = true; c.advance(10 * 60_000);
+    const r = await runSource(l, store, { now: c.now, reuseFresh: true });
+    expect(r.status).toMatchObject({ retained: true, dataAt: NOW, lastOkAt: NOW });
+    expect(r.status.checkedAt).toBe(NOW + 10 * 60_000);
   });
 });

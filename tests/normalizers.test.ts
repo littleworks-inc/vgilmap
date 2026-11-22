@@ -92,12 +92,31 @@ describe('Cyber (ransomware + CISA KEV)', () => {
   const kev = [{ cveID: 'CVE-2026-0001', vendorProject: 'Acme', product: 'Router', dateAdded: '2026-11-19', shortDescription: 'Bad bug', knownRansomwareCampaignUse: 'Known' }];
   it('warns when one feed is down but still returns the other', () => {
     const r = normalizeCyber({ victims: null, kev });
-    expect(r.warnings).toEqual(['ransomware.live unavailable (showing CISA KEV only)']);
+    expect(r.warnings).toEqual(['ransomware.live unavailable']);
+    expect(r.parts?.map(p => [p.name, p.ok])).toEqual([['ransomware.live', false], ['CISA KEV', true]]);
     expect(r.events).toHaveLength(1);
     expect(isMappable(r.events[0])).toBe(false);
   });
   it('throws when both feeds are down', () => {
     expect(() => normalizeCyber({ victims: null, kev: null })).toThrow(/both unavailable/);
+  });
+});
+
+describe('Multi-feed parts', () => {
+  it('news sources report one part per feed, with the failed feed marked not ok', () => {
+    const items = [
+      { title: 'Ransomware gang leaks data from hospital', link: 'https://a/1', date: '2026-11-20T08:00:00Z', description: '', feed: 'Krebs' },
+      { title: 'Ransomware attack hits a school', link: 'https://a/2', date: '2026-11-20T08:00:00Z', description: '', feed: 'The Record' },
+    ];
+    const r = normalizeCyberNews({ items: items.slice(0, 1), feeds: [{ name: 'Krebs', ok: true }, { name: 'The Record', ok: false }] });
+    expect(r.parts).toEqual([
+      { name: 'Krebs', ok: true, events: r.events },
+      { name: 'The Record', ok: false, events: [] },
+    ]);
+  });
+  it('science reports flares, storms and asteroids separately', () => {
+    const r = normalizeScience({ flr: [], gst: [], neo: null });
+    expect(r.parts?.map(p => [p.name, p.ok])).toEqual([['solar flares', true], ['geomagnetic storms', true], ['asteroids', false]]);
   });
 });
 

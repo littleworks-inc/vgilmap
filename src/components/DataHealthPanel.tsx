@@ -81,7 +81,7 @@ export function DataHealthPanel({ sources, viewCounts, activeDomains }: DataHeal
             const slow = s.status === 'loading' && elapsed >= SLOW_AFTER_S;
             const detail =
               s.status === 'loading' ? (slow ? `still waiting after ${elapsed}s — this source is slow` : null)
-              : s.status === 'error' ? (s.retained ? `${s.error} · still showing the last good data (${s.count} events)` : quiet ? `${s.error} · optional extra, nothing depends on it` : s.error)
+              : s.status === 'error' ? (s.retained ? `${s.error} · still showing the last good data (${s.count} events${s.dataAt ? `, fetched ${ago(now - s.dataAt)}` : ''})` : quiet ? `${s.error} · optional extra, nothing depends on it` : s.error)
               : s.status === 'stale' && s.newestAt ? `newest event is ${ago(now - new Date(s.newestAt).getTime())}`
               : s.status === 'empty' ? 'responded with no events'
               : s.warnings.length > 0 ? s.warnings.join(' · ')

@@ -10,12 +10,14 @@
  *   ?severity=low|medium|high|critical   (minimum)
  *   ?since=2026-01-01T00:00:00Z
  *   ?location=map|nomap             (events with / without a place on the map)
- *   ?limit=100&offset=0             (limit max 1000; see next_offset)
+ *   ?limit=100&cursor=...           (limit max 1000; pass next_cursor to get the next page)
  *
- * `total` and `summary` describe everything that matches the filters, before pagination.
+ * `total` and `summary` describe everything that matches the filters, before pagination. Pages are
+ * keyset cursors over a stable order, so new events arriving between requests cannot repeat or skip
+ * any. Unsupported filter values are rejected with 400 and the list of valid values.
  * `sources` reports each source's health, retained-stale state, coverage and location precision.
  */
-import { CORS, runPipeline, toResponse } from '../_lib/pipeline';
+import { CORS, errorResponse, runPipeline, toResponse } from '../_lib/pipeline';
 
 export const config = { runtime: 'edge' };
 
@@ -25,8 +27,6 @@ export default async function handler(req: Request): Promise<Response> {
     const { body } = await runPipeline(new URL(req.url).searchParams);
     return toResponse(body);
   } catch (err) {
-    return new Response(JSON.stringify({ ok: false, error: String(err) }), {
-      status: 500, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-    });
+    return errorResponse(err);
   }
 }

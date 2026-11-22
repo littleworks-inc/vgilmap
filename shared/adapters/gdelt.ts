@@ -11,7 +11,7 @@
  */
 import type { VigilEvent, Severity } from '../types';
 import type { NormalizeResult, NewsInput } from './result';
-import { feedWarnings } from './result';
+import { feedParts, feedWarnings } from './result';
 import { countryName, findCountries } from './countries';
 
 // ─── Shared helpers ────────────────────────────────────────
@@ -66,7 +66,7 @@ export function normalizeConflictNews(json: NewsInput): NormalizeResult {
       metadata: {},
     });
   }
-  return { events, warnings };
+  return { events, warnings, parts: feedParts(events, json.feeds) };
 }
 
 // ─── Source 2: GDELT ───────────────────────────────────────

@@ -21,6 +21,8 @@ import { usePersistedBool } from './hooks/usePersistedBool';
 import { readViewState, writeViewState, isDefaultView } from './utils/viewState';
 import { MobileDrawer } from './components/MobileDrawer';
 import { fetchSource } from './data/pipeline';
+import { applyOutcome } from './data/refresh';
+import type { RefreshOutcome } from './data/refresh';
 import { SOURCE_META } from '../shared/pipeline/sources';
 import { mergeEvents } from '../shared/pipeline/query';
 import type { CyberFocus, Domain, TimeWindowId, VigilEvent } from './types';
@@ -261,7 +263,6 @@ export default function App() {
       refreshSeconds: a.refreshSeconds, precision: a.precision, coverage: a.coverage,
     })),
   );
-  const lastOkRef = useRef<Map<string, number>>(new Map());
   // Each source's last successful result: a refresh starts from it, and a failed source keeps showing it.
   const lastGoodRef = useRef<Map<string, VigilEvent[]>>(new Map());
   const checkedRef = useRef<Map<string, number>>(new Map());
@@ -282,28 +283,22 @@ export default function App() {
     const run = (loadRunRef.current[meta.key] = (loadRunRef.current[meta.key] ?? 0) + 1);
     const startedAt = performance.now();
     checkedRef.current.set(meta.key, Date.now());
-    let patch: Partial<SourceHealth>;
+    let outcome: RefreshOutcome;
     try {
       // Status (ok / degraded / stale / empty / retained) is classified on the server, once, for everyone.
-      const { events, status } = await fetchSource(meta.key);
+      const fetched = await fetchSource(meta.key);
       if (run !== loadRunRef.current[meta.key]) return; // a newer refresh of this source superseded this one
-      lastGoodRef.current.set(meta.key, events);
-      setSourceIds(prev => ({ ...prev, [meta.key]: events.map(e => e.id) }));
-      if (events.length > 0) lastOkRef.current.set(meta.key, Date.now());
-      patch = { ...status, retained: status.retained ?? false };
+      lastGoodRef.current.set(meta.key, fetched.events);
+      setSourceIds(prev => ({ ...prev, [meta.key]: fetched.events.map(e => e.id) }));
+      outcome = { ok: true, fetched };
     } catch (reason) {
       if (run !== loadRunRef.current[meta.key]) return;
       console.error(`[${meta.label}] failed:`, reason);
       // The pipeline could not serve this source at all: keep showing what we already have.
-      const kept = lastGoodRef.current.get(meta.key);
-      patch = {
-        status: 'error', count: kept?.length ?? 0, warnings: [], retained: !!kept && kept.length > 0,
-        error: reason instanceof Error ? reason.message : String(reason),
-      };
+      outcome = { ok: false, error: reason instanceof Error ? reason.message : String(reason), keptCount: lastGoodRef.current.get(meta.key)?.length ?? 0 };
     }
-    setSourceHealth(prev => prev.map(h => (h.key === meta.key ? {
-      ...h, ...patch, durationMs: Math.round(performance.now() - startedAt), checkedAt: Date.now(), lastOkAt: lastOkRef.current.get(meta.key),
-    } : h)));
+    const timing = { durationMs: Math.round(performance.now() - startedAt), checkedAt: Date.now() };
+    setSourceHealth(prev => prev.map(h => (h.key === meta.key ? applyOutcome(h, outcome, timing) : h)));
     publish();
     setLoading(false); // the overlay goes away as soon as any source has answered
   }, [publish]);

@@ -4,7 +4,7 @@
  * runs identically in the Vercel function and in tests.
  */
 import type { VigilEvent } from '../types';
-import type { NormalizeResult } from '../adapters/result';
+import type { NormalizeResult, Part } from '../adapters/result';
 import type { SourceMeta } from './sources';
 import { classify } from './health';
 import type { HealthStatus } from './health';
@@ -45,25 +45,49 @@ export interface SourceResult {
   events: VigilEvent[];
 }
 
-export interface LastGood { events: VigilEvent[]; at: number }
+/** The last successful run of a source, kept so a failing refresh can fall back to it. */
+export interface LastGood {
+  events: VigilEvent[];
+  at: number;
+  /** For multi-feed sources: each feed's last good events, so one feed failing keeps only ITS old data. */
+  parts?: Record<string, VigilEvent[]>;
+}
+
+/** What the engine remembers per source: the last good data and the outcome of the latest run. */
+export interface SourceEntry {
+  good?: LastGood;
+  last?: { result: SourceResult; at: number; ok: boolean };
+}
+
 export interface LastGoodStore {
-  get(key: string): LastGood | undefined;
-  set(key: string, value: LastGood): void;
+  get(key: string): SourceEntry | undefined;
+  set(key: string, entry: SourceEntry): void;
+  /** Runs in flight, so concurrent requests for one source share a single upstream fetch. */
+  inflight: Map<string, Promise<SourceResult>>;
 }
 
 export class MemoryStore implements LastGoodStore {
-  private m = new Map<string, LastGood>();
+  private m = new Map<string, SourceEntry>();
+  inflight = new Map<string, Promise<SourceResult>>();
   get(key: string) { return this.m.get(key); }
-  set(key: string, value: LastGood) { this.m.set(key, value); }
+  set(key: string, entry: SourceEntry) { this.m.set(key, entry); }
 }
 
 export interface RunOptions {
   now?: () => number;
   /** A loader that has not answered by then is treated as failed (edge functions must reply in ~25s). */
   timeoutMs?: number;
+  /**
+   * Serve the source's latest snapshot, without calling upstream, while it is younger than the
+   * source's refresh interval (or, after a failure, for a short back-off). Requests with different
+   * filters or pages then all see the same snapshot. Off by default so tests control timing.
+   */
+  reuseFresh?: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
+/** After a failed run, don't hit a struggling upstream again for this long (capped by the refresh interval). */
+const FAILURE_BACKOFF_MS = 30_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   let t: ReturnType<typeof setTimeout>;
@@ -76,34 +100,54 @@ function baseStatus(meta: SourceMeta): Pick<SourceStatus, 'key' | 'label' | 'dom
 }
 
 /**
- * Run one source. On success the result replaces the stored one. On failure the last good events
- * (if any) are served again, flagged `retained`, so a failing source never makes data vanish.
+ * Combine a multi-feed result with what we remember. A feed that answered replaces its old events;
+ * a feed that failed keeps its previous events, so one upstream going down never shrinks the data.
  */
-export async function runSource(loader: SourceLoader, store: LastGoodStore, opts: RunOptions = {}): Promise<SourceResult> {
+function mergeParts(parts: Part[], prev: Record<string, VigilEvent[]> | undefined): { events: VigilEvent[]; kept: Record<string, VigilEvent[]>; notes: string[] } {
+  const kept: Record<string, VigilEvent[]> = {};
+  const notes: string[] = [];
+  for (const p of parts) {
+    if (p.ok) { kept[p.name] = p.events; continue; }
+    const old = prev?.[p.name] ?? [];
+    kept[p.name] = old;
+    if (old.length > 0) notes.push(`${p.name}: refresh failed, showing ${old.length} earlier events`);
+  }
+  return { events: Object.values(kept).flat(), kept, notes };
+}
+
+async function execute(loader: SourceLoader, store: LastGoodStore, opts: RunOptions): Promise<SourceResult> {
   const now = opts.now ?? Date.now;
   const { meta } = loader;
   const startedAt = now();
+  const prev = store.get(meta.key);
   try {
-    const { events: raw, warnings } = await withTimeout(loader.load(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, meta.label);
+    const out = await withTimeout(loader.load(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, meta.label);
+    let raw = out.events;
+    let kept: Record<string, VigilEvent[]> | undefined;
+    const warnings = [...out.warnings];
+    if (out.parts) {
+      const merged = mergeParts(out.parts, prev?.good?.parts);
+      raw = merged.events; kept = merged.kept; warnings.push(...merged.notes);
+    }
     const events = raw.map(e => withPrecision(e, meta.precision));
     const t = now();
-    const prev = store.get(meta.key);
-    store.set(meta.key, { events, at: t });
     const { status, newestAt } = classify(events, meta.staleAfterHours, warnings, t);
-    return {
+    const result: SourceResult = {
       events,
       status: {
         ...baseStatus(meta), status, count: events.length, newestAt, warnings,
-        dataAt: t, lastOkAt: events.length > 0 ? t : prev?.events.length ? prev.at : undefined,
+        dataAt: t, lastOkAt: events.length > 0 ? t : prev?.good?.events.length ? prev.good.at : undefined,
         durationMs: t - startedAt, checkedAt: t,
       },
     };
+    store.set(meta.key, { good: { events, at: t, parts: kept }, last: { result, at: t, ok: true } });
+    return result;
   } catch (reason) {
     const t = now();
     const error = reason instanceof Error ? reason.message : String(reason);
-    const kept = store.get(meta.key);
+    const kept = prev?.good;
     const retained = !!kept && kept.events.length > 0;
-    return {
+    const result: SourceResult = {
       events: retained ? kept.events : [],
       status: {
         ...baseStatus(meta), status: 'error', count: retained ? kept.events.length : 0,
@@ -113,7 +157,32 @@ export async function runSource(loader: SourceLoader, store: LastGoodStore, opts
         durationMs: t - startedAt, checkedAt: t,
       },
     };
+    store.set(meta.key, { good: prev?.good, last: { result, at: t, ok: false } });
+    return result;
   }
+}
+
+/**
+ * Run one source. On success the result replaces the stored one. On failure the last good events
+ * (if any) are served again, flagged `retained`, so a failing source never makes data vanish.
+ * With `reuseFresh`, a recent snapshot is served as-is, and concurrent callers share one fetch.
+ */
+export async function runSource(loader: SourceLoader, store: LastGoodStore, opts: RunOptions = {}): Promise<SourceResult> {
+  const now = opts.now ?? Date.now;
+  const { meta } = loader;
+  if (opts.reuseFresh) {
+    const last = store.get(meta.key)?.last;
+    const ttl = last?.ok ? meta.refreshSeconds * 1000 : Math.min(FAILURE_BACKOFF_MS, meta.refreshSeconds * 1000);
+    if (last && now() - last.at < ttl) return last.result;
+    const running = store.inflight.get(meta.key);
+    if (running) return running;
+  }
+  const run = execute(loader, store, opts);
+  if (opts.reuseFresh) {
+    store.inflight.set(meta.key, run);
+    void run.finally(() => store.inflight.delete(meta.key));
+  }
+  return run;
 }
 
 /** Run several sources in parallel; one failing never affects the others. */

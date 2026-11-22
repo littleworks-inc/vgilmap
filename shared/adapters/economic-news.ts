@@ -10,7 +10,7 @@
  */
 import type { VigilEvent, Severity, Domain } from '../types';
 import type { NormalizeResult, NewsInput } from './result';
-import { feedWarnings } from './result';
+import { feedParts, feedWarnings } from './result';
 import { countryName, findCountries } from './countries';
 
 function hashId(s: string): string {
@@ -62,5 +62,5 @@ export function normalizeEconomicNews(json: NewsInput): NormalizeResult {
       metadata: {},
     });
   }
-  return { events, warnings };
+  return { events, warnings, parts: feedParts(events, json.feeds) };
 }

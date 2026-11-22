@@ -153,11 +153,19 @@ export function normalizeCyber({ victims, kev }: { victims: unknown; kev: unknow
   const victimsOk = Array.isArray(victims);
   const kevOk = Array.isArray(kev);
   if (!victimsOk && !kevOk) throw new Error('ransomware.live and CISA KEV both unavailable');
-  if (!victimsOk) warnings.push('ransomware.live unavailable (showing CISA KEV only)');
-  if (!kevOk) warnings.push('CISA KEV unavailable (showing ransomware claims only)');
+  if (!victimsOk) warnings.push('ransomware.live unavailable');
+  if (!kevOk) warnings.push('CISA KEV unavailable');
 
-  const events = [...normalizeVictims(victims), ...normalizeKev(kev)].sort(
+  const claims = normalizeVictims(victims);
+  const kevEvents = normalizeKev(kev);
+  const events = [...claims, ...kevEvents].sort(
     (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   );
-  return { events, warnings };
+  return {
+    events, warnings,
+    parts: [
+      { name: 'ransomware.live', ok: victimsOk, events: claims },
+      { name: 'CISA KEV', ok: kevOk, events: kevEvents },
+    ],
+  };
 }

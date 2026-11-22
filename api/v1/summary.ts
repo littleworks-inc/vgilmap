@@ -5,7 +5,7 @@
  * pipeline and filters as /api/v1/events, but without the page of events), plus per-source health.
  * Accepts the same filters as /api/v1/events (domain, source, severity, since, location).
  */
-import { CORS, cacheControl, runPipeline } from '../_lib/pipeline';
+import { CORS, cacheControl, errorResponse, runPipeline } from '../_lib/pipeline';
 
 export const config = { runtime: 'edge' };
 
@@ -31,8 +31,6 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': cacheControl(body) },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ ok: false, error: String(err) }), {
-      status: 500, headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-    });
+    return errorResponse(err);
   }
 }

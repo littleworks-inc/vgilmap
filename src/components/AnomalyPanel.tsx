@@ -130,7 +130,10 @@ export function AnomalyPanel({ signals, onSelectSignal }: AnomalyPanelProps) {
                   marginTop: '2px', display: 'flex',
                   alignItems: 'center', gap: '6px',
                 }}>
-                  {signal.count} events
+                  {signal.count} {signal.basis === 'reports' ? 'reports' : 'events'}
+                  {signal.basis === 'reports' && (
+                    <span title="These are reports that name this country (positions are country-level estimates), not events clustered in one place" style={{ fontSize: '9px', color: '#7d8ba1', border: '1px dashed #334155', borderRadius: '4px', padding: '0 4px' }}>by country</span>
+                  )}
                   <span style={{
                     fontSize: '9px',
                     fontWeight: 700,

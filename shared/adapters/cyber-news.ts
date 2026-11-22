@@ -9,7 +9,7 @@
  */
 import type { VigilEvent, Severity } from '../types';
 import type { NormalizeResult, NewsInput } from './result';
-import { feedWarnings } from './result';
+import { feedParts, feedWarnings } from './result';
 import { countryName, findCountries } from './countries';
 
 interface Kind { category: string; label: string; severity: Severity }
@@ -118,5 +118,5 @@ export function normalizeCyberNews(json: NewsInput): NormalizeResult {
       metadata: { kind: kind.label, ...(victim ? { impacted: victim } : {}), ...(country ? {} : { unlocated: true }) },
     });
   }
-  return { events, warnings };
+  return { events, warnings, parts: feedParts(events, json.feeds) };
 }

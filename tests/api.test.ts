@@ -15,10 +15,13 @@ const alertFeature = (i: number, withGeometry: boolean) => ({
 });
 
 let usgsUp = true;
+let usgsCalls = 0;
 function mockFetch() {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.includes('who.int')) return new Response(JSON.stringify({ value: [{ Title: 'Cholera - Somewhere', UrlName: 'cholera-somewhere', PublicationDateAndTime: new Date().toISOString(), Summary: '' }] }));
     if (url.includes('all_day.geojson')) {
+      usgsCalls++;
       return usgsUp ? new Response(JSON.stringify({ features: Array.from({ length: 150 }, (_, i) => quake(i)) })) : new Response('down', { status: 503 });
     }
     if (url.includes('api.weather.gov')) return new Response(JSON.stringify({ features: [alertFeature(1, true), alertFeature(2, false), alertFeature(3, false)] }));
@@ -35,17 +38,17 @@ async function get<T = EventsResponse>(path: string): Promise<{ res: Response; b
   return { res, body: (await res.json()) as T };
 }
 
-beforeEach(() => { usgsUp = true; mockFetch(); });
-afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
+beforeEach(() => { usgsUp = true; usgsCalls = 0; mockFetch(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.resetModules(); });
 
 describe('/api/v1/events (end to end, mocked upstreams)', () => {
   it('serves the whole dataset and reports every source, even when most are down', async () => {
-    const { res, body } = await get('/api/v1/events?limit=10&source=usgs-day,noaa,cyber,who');
+    const { res, body } = await get('/api/v1/events?limit=10&source=usgs-day,noaa,cyber,reliefweb');
     expect(res.status).toBe(200);
     const status = Object.fromEntries(body.sources.map((s: SourceStatus) => [s.key, s.status]));
     expect(status['usgs-day']).toBe('ok');
     expect(status['noaa']).toBe('ok');
-    expect(status['who']).toBe('error');
+    expect(status['reliefweb']).toBe('error');
     expect(status['cyber']).toBe('error');
   });
 
@@ -55,7 +58,7 @@ describe('/api/v1/events (end to end, mocked upstreams)', () => {
     expect(body.total).toBe(153);            // 150 quakes + 3 NOAA alerts
     expect(body.summary.total).toBe(153);
     expect(body.summary.by_domain).toEqual({ disaster: 150, climate: 3 });
-    expect(body.next_offset).toBe(10);
+    expect(body.next_cursor).toEqual(expect.any(String));
     const sum = await get<SummaryBody>('/api/v1/summary?source=usgs-day,noaa');
     expect(sum.body.total_events).toBe(153); // the summary endpoint agrees (it used to count only a 100-event page)
     expect(sum.body.by_domain).toEqual({ disaster: 150, climate: 3 });
@@ -82,6 +85,8 @@ describe('/api/v1/events (end to end, mocked upstreams)', () => {
     const first = await get('/api/v1/events?source=usgs-day&limit=1');
     expect(first.body.total).toBe(150);
     usgsUp = false;
+    // Within the refresh interval the fresh snapshot is served as-is; once it is older, upstream is asked again.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 5 * 60_000 });
     const second = await get('/api/v1/events?source=usgs-day&limit=1');
     expect(second.res.status).toBe(200);
     expect(second.body.total).toBe(150);
@@ -106,6 +111,67 @@ describe('/api/v1/events (end to end, mocked upstreams)', () => {
     expect(await keys('')).toEqual(['core']);
     expect(await keys('source=extra')).toEqual(['extra']);
     expect(await keys('optional=1')).toEqual(['core', 'extra']);
+  });
+
+  describe('invalid requests are rejected, not silently widened', () => {
+    it.each([
+      ['source=typo', /Unknown source "typo"/],
+      ['domain=nope', /Unknown domain "nope"/],
+      ['severity=urgent', /Unknown severity/],
+      ['since=yesterday', /Invalid "since"/],
+      ['limit=lots', /Invalid "limit"/],
+      ['cursor=!!!', /Invalid "cursor"/],
+      ['offset=5', /cursor/],
+    ])('%s → 400', async (qs, message) => {
+      for (const path of ['/api/v1/events', '/api/v1/summary']) {
+        const { res, body } = await get<{ ok: boolean; error: string; valid?: string[] }>(`${path}?${qs}`);
+        expect(res.status).toBe(400);
+        expect(body.ok).toBe(false);
+        expect(body.error).toMatch(message);
+        expect(res.headers.get('cache-control')).toBe('no-store');
+      }
+    });
+    it('lists the valid source keys', async () => {
+      const { body } = await get<{ valid: string[] }>('/api/v1/events?source=typo');
+      expect(body.valid).toEqual(expect.arrayContaining(['usgs-day', 'who', 'cyber']));
+    });
+  });
+
+  describe('caching follows the source definitions', () => {
+    it('caches each source for its own refresh interval (no five-minute cap)', async () => {
+      const who = await get('/api/v1/events?source=who');
+      expect(who.res.status).toBe(200);
+      expect(who.res.headers.get('cache-control')).toMatch(/s-maxage=3600\b/);
+      const quakes = await get('/api/v1/events?source=usgs-day');
+      expect(quakes.res.headers.get('cache-control')).toMatch(/s-maxage=120\b/);
+    });
+    it('a mixed request uses its fastest-refreshing source', async () => {
+      const { res } = await get('/api/v1/events?source=who,usgs-day');
+      expect(res.headers.get('cache-control')).toMatch(/s-maxage=120\b/);
+    });
+    it('different filters and pages reuse one upstream snapshot instead of refetching', async () => {
+      const first = await get('/api/v1/events?source=usgs-day&limit=50');
+      await get('/api/v1/events?source=usgs-day&limit=10&severity=high');
+      await get(`/api/v1/events?source=usgs-day&limit=50&cursor=${first.body.next_cursor}`);
+      await get('/api/v1/summary?source=usgs-day');
+      expect(usgsCalls).toBe(1);
+    });
+    it('concurrent requests share a single upstream fetch', async () => {
+      await Promise.all([1, 2, 3, 4].map(() => get('/api/v1/events?source=usgs-day&limit=5')));
+      expect(usgsCalls).toBe(1);
+    });
+  });
+
+  it('pages of one dataset never mix snapshots: walking every page returns each event once', async () => {
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const { body }: { body: EventsResponse } = await get(`/api/v1/events?source=usgs-day&limit=40${cursor ? `&cursor=${cursor}` : ''}`);
+      ids.push(...body.data.map(e => e.id));
+      cursor = body.next_cursor;
+    } while (cursor);
+    expect(ids).toHaveLength(150);
+    expect(new Set(ids).size).toBe(150);
   });
 
   it('exposes one definition for every source', () => {

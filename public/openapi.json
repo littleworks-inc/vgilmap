@@ -16,14 +16,15 @@
         "parameters": [
           { "name": "domain", "in": "query", "description": "Comma-separated domains to include", "schema": { "type": "string", "example": "disaster,conflict" } },
           { "name": "severity", "in": "query", "description": "Minimum severity level", "schema": { "type": "string", "enum": ["info","low","medium","high","critical"] } },
-          { "name": "limit", "in": "query", "description": "Page size (max 1000). Use next_offset in the response to continue.", "schema": { "type": "integer", "default": 100, "maximum": 1000 } },
-          { "name": "offset", "in": "query", "description": "Start position for pagination", "schema": { "type": "integer", "default": 0 } },
+          { "name": "limit", "in": "query", "description": "Page size (max 1000). Use next_cursor in the response to continue.", "schema": { "type": "integer", "default": 100, "maximum": 1000 } },
+          { "name": "cursor", "in": "query", "description": "Pass next_cursor from the previous response to get the next page. Stable while events arrive or expire.", "schema": { "type": "string" } },
           { "name": "source", "in": "query", "description": "Comma-separated source keys. Default: every source except the optional GDELT extra", "schema": { "type": "string", "example": "usgs-day,noaa" } },
           { "name": "optional", "in": "query", "description": "Set to 1 to include optional sources in a whole-dataset request", "schema": { "type": "string", "enum": ["1"] } },
           { "name": "location", "in": "query", "description": "map = events with a place on the map; nomap = list-only events", "schema": { "type": "string", "enum": ["map","nomap"] } },
           { "name": "since", "in": "query", "description": "ISO timestamp — only events after this time", "schema": { "type": "string", "format": "date-time" } }
         ],
         "responses": {
+          "400": { "description": "Unsupported filter, malformed date/limit/cursor. Body: { ok: false, error, valid? } with the accepted values" },
           "200": {
             "description": "Success",
             "content": {

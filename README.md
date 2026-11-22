@@ -75,7 +75,7 @@ npm run dev                  # terminal 2 → http://localhost:5173
 
 Open [localhost:5173](http://localhost:5173). Without `npm run dev:api` the map stays empty, because every data source is served through `/api/v1/events`. (`vercel dev` also works if you have the Vercel CLI.)
 
-Other scripts: `npm test` (vitest), `npm run typecheck` (app **and** `api/`), `npm run lint`, `npm run build`.
+Other scripts: `npm test` (vitest), `npm run typecheck` (app **and** `api/`), `npm run lint`, `npm run build` (type-checks app and `api/` before building).
 
 ### Environment variables
 
@@ -139,7 +139,7 @@ scripts/                         # dev-api.ts (local API server), backfill-cyber
 
 **Data flow.** `api/_lib/sources.ts` fetches each upstream and passes the raw data to the shared normalizer. `shared/pipeline/engine.ts` runs the sources, stamps location precision, classifies health, and remembers each source's last good result. `api/v1/events` merges, filters and paginates. The app requests one source at a time (`/api/v1/events?source=<key>`), so a slow source never blocks the rest, and each source refreshes on its own interval (2 min for earthquakes up to 1 h for WHO). If a refresh fails, that source's last good events stay on the map, flagged *Stale · refresh failed* in Data Health. The edge cache TTL follows the same per-source interval.
 
-**Last-good data** is kept in memory per function instance and in the browser, so it survives a flaky upstream but not a cold start. Durable storage is only used for cyber history (Upstash Redis).
+**Last-good data** is kept per source in memory on each function instance and in the browser, so it survives a flaky upstream but not a cold start. Sources built from several feeds (ransomware.live + CISA KEV, the news RSS sources, the three NASA space-weather feeds) retain data **per feed**: when one feed fails, its earlier events stay and only the failed feed is flagged. The "last had data" time shown is the server's, so retained data never looks fresher than it is. Durable storage is only used for cyber history (Upstash Redis).
 
 ### Unified event schema
 
@@ -174,9 +174,9 @@ interface VigilEvent {
 
 `src/intelligence/anomaly.ts` runs in the browser with no dependencies. It is a within-snapshot comparison, **not** a historical anomaly detector:
 
-1. Groups mappable events by domain + 10°×10° geographic cell (list-only events are excluded)
-2. Computes Welford mean and standard deviation of per-cell counts, per domain
-3. Z-scores each cell: `z = (count - mean) / stddev` and reports cells above the threshold
+1. **Measured clusters:** groups events with a measured position (exact / area) by domain + 10°×10° cell
+2. **Reports by country:** events known only to a country (headlines, WHO, ransomware claims) are counted per country instead. They are *never* put on the grid, because unrelated reports that share one country-centre point would look like a geographic cluster
+3. Computes Welford mean and standard deviation of the counts per domain and z-scores each group: `z = (count - mean) / stddev`. List-only events are excluded from both
 
 It says "this region has more events than other regions right now", not "this is unusual for this region". True anomalies need per-region, per-source baselines, which need stored history.
 
@@ -193,7 +193,7 @@ The same dataset the app uses.
 ```bash
 curl "https://vgilmap.vercel.app/api/v1/events?severity=high&limit=10"
 curl "https://vgilmap.vercel.app/api/v1/events?domain=cyber&location=nomap"   # list-only events
-curl "https://vgilmap.vercel.app/api/v1/events?source=usgs-day,noaa&limit=1000&offset=1000"
+curl "https://vgilmap.vercel.app/api/v1/events?source=usgs-day,noaa&limit=1000&cursor=<next_cursor>"
 ```
 
 | Param | Type | Description |
@@ -204,19 +204,20 @@ curl "https://vgilmap.vercel.app/api/v1/events?source=usgs-day,noaa&limit=1000&o
 | `severity` | string | Minimum level: `info`, `low`, `medium`, `high`, `critical` |
 | `since` | ISO datetime | Only events after this timestamp |
 | `location` | `map` / `nomap` | Only events with / without a place on the map |
-| `limit`, `offset` | integer | Page size (default 100, max 1000) and start; use `next_offset` to continue |
+| `limit` | integer | Page size (default 100, max 1000) |
+| `cursor` | string | Pass `next_cursor` from the previous response to get the next page |
 
-`total` and `summary` describe **everything matching the filters, before pagination**. `sources` reports each source's health, whether it is being served from retained (stale) data, its coverage and its location precision. The response is `503` (never cached) only when no selected source can serve anything.
+`total` and `summary` describe **everything matching the filters, before pagination**. Pages use a keyset cursor over a stable order (newest first, ties by id), so events arriving or expiring between requests can never repeat or skip an event; `offset` is not supported. Unsupported filter values, malformed dates and bad cursors are rejected with **400** and the list of valid values, never silently ignored. `sources` reports each source's health, whether it is being served from retained (stale) data, its coverage and its location precision. The response is `503` (never cached) only when no selected source can serve anything. Responses are cached at the edge for the fastest-refreshing selected source's interval (a WHO-only request for an hour), and the server keeps one snapshot per source, so different filters and pages reuse one upstream fetch and concurrent requests share it.
 
 **Response (abridged):**
 ```json
 {
   "ok": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "count": 10,
   "total": 665,
   "total_unfiltered": 665,
-  "next_offset": 10,
+  "next_cursor": "MTc5NTM1ODEwMDAwMHx1c2dzLW5jNzUy",
   "summary": { "total": 665, "by_domain": {}, "by_severity": {}, "by_precision": {}, "top_events": [] },
   "sources": [
     { "key": "usgs-day", "status": "ok", "count": 216, "retained": false,

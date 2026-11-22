@@ -176,14 +176,19 @@ export function normalizeScience({ flr, gst, neo }: { flr: unknown; gst: unknown
 
   // None of these happen at a place on Earth, so none belong on the map. Flag them so they stay in
   // lists (and the Data Health counts) without being plotted at a made-up position.
-  const all: VigilEvent[] = [
-    ...normalizeFLR(flr),
-    ...normalizeGST(gst),
-    ...normalizeNeo(neo),
-  ].map(e => ({ ...e, metadata: { ...e.metadata, unlocated: true } }));
+  const unlocated = (evs: VigilEvent[]) => evs.map(e => ({ ...e, metadata: { ...e.metadata, unlocated: true } }));
+  const flares = unlocated(normalizeFLR(flr));
+  const storms = unlocated(normalizeGST(gst));
+  const asteroids = unlocated(normalizeNeo(neo));
+  const all = [...flares, ...storms, ...asteroids];
 
   return {
     events: all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
     warnings,
+    parts: [
+      { name: 'solar flares', ok: flr != null, events: flares },
+      { name: 'geomagnetic storms', ok: gst != null, events: storms },
+      { name: 'asteroids', ok: neo != null, events: asteroids },
+    ],
   };
 }
