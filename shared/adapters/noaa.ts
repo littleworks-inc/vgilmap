@@ -165,6 +165,10 @@ export function normalizeNOAA(feed: NOAAAlertFeed): VigilEvent[] {
       .join('')
       .trim();
 
+    // The alert is current until it ends (or, failing that, expires). A cancelled or lapsed alert
+    // must not stay on screen if we are later serving a retained copy of this feed.
+    const endsAt = [props.ends, props.expires].map(v => (v ? new Date(v).getTime() : NaN)).find(Number.isFinite);
+
     events.push({
       id: `noaa-${props.id ?? feature.id}`,
       timestamp,
@@ -184,6 +188,7 @@ export function normalizeNOAA(feed: NOAAAlertFeed): VigilEvent[] {
       sourceUrl: `https://www.weather.gov/`,
       confidence,
       tags,
+      ...(endsAt !== undefined ? { expiresAt: new Date(endsAt).toISOString() } : {}),
       metadata: {
         event_type: props.event,
         severity_raw: props.severity,

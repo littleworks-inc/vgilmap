@@ -11,10 +11,11 @@ const quake = (i: number) => ({ id: `q${i}`, properties: { time: Date.now() - 60
 const alertFeature = (i: number, withGeometry: boolean) => ({
   type: 'Feature', id: `a${i}`,
   geometry: withGeometry ? { type: 'Polygon', coordinates: [[[-90, 30], [-88, 30], [-88, 32], [-90, 30]]] } : null,
-  properties: { id: `a${i}`, areaDesc: 'County', status: 'Actual', messageType: 'Alert', severity: 'Moderate', certainty: 'Likely', urgency: 'Expected', event: 'Wind Advisory', headline: 'Wind', description: '', instruction: null, sent: new Date(Date.now() - 60_000).toISOString(), effective: new Date().toISOString(), expires: new Date(Date.now() + 86_400_000).toISOString(), ends: null, onset: null, category: 'Met', response: '', affectedZones: [], parameters: {} },
+  properties: { id: `a${i}`, areaDesc: 'County', status: 'Actual', messageType: 'Alert', severity: 'Moderate', certainty: 'Likely', urgency: 'Expected', event: 'Wind Advisory', headline: 'Wind', description: '', instruction: null, sent: new Date(Date.now() - 60_000).toISOString(), effective: new Date().toISOString(), expires: new Date(Date.now() + alertEndsInS * 1000).toISOString(), ends: null, onset: null, category: 'Met', response: '', affectedZones: [], parameters: {} },
 });
 
 let usgsUp = true;
+let alertEndsInS = 86_400; // when the mocked NOAA alerts end, seconds from now
 let usgsCalls = 0;
 let whoCalls = 0;
 function mockFetch() {
@@ -40,7 +41,7 @@ async function get<T = EventsResponse>(path: string): Promise<{ res: Response; b
   return { res, body: (await res.json()) as T };
 }
 
-beforeEach(() => { usgsUp = true; usgsCalls = 0; whoCalls = 0; mockFetch(); });
+beforeEach(() => { alertEndsInS = 86_400; usgsUp = true; usgsCalls = 0; whoCalls = 0; mockFetch(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.resetModules(); });
 
 describe('/api/v1/events (end to end, mocked upstreams)', () => {
@@ -148,9 +149,9 @@ describe('/api/v1/events (end to end, mocked upstreams)', () => {
     it('caches each source for its own refresh interval (no five-minute cap)', async () => {
       const who = await get('/api/v1/events?source=who');
       expect(who.res.status).toBe(200);
-      expect(who.res.headers.get('cache-control')).toMatch(/s-maxage=3600\b/);
+      expect(who.res.headers.get('cache-control')).toMatch(/s-maxage=(3599|3600)\b/);
       const quakes = await get('/api/v1/events?source=usgs-day');
-      expect(quakes.res.headers.get('cache-control')).toMatch(/s-maxage=120\b/);
+      expect(quakes.res.headers.get('cache-control')).toMatch(/s-maxage=(119|120)\b/);
     });
     it('caches an old snapshot only for the freshness it has LEFT, never a whole new interval', async () => {
       const t0 = Date.now();
@@ -169,6 +170,27 @@ describe('/api/v1/events (end to end, mocked upstreams)', () => {
       expect(whoCalls).toBe(2);
       expect(third.res.headers.get('cache-control')).toMatch(/s-maxage=3600\b/);
     });
+    it('never caches a response past the moment an alert in it ends', async () => {
+      alertEndsInS = 90; // NOAA refreshes every 300s, but these alerts end in 90s
+      const { res, body } = await get('/api/v1/events?source=noaa');
+      expect(body.next_expiry).not.toBeNull();
+      const ttl = Number(/s-maxage=(\d+)/.exec(res.headers.get('cache-control') ?? '')?.[1]);
+      expect(ttl).toBeLessThanOrEqual(90);
+      expect(ttl).toBeGreaterThan(60);
+    });
+    it('hides alerts after they end, even from a cached snapshot, and shows them with lifecycle=all', async () => {
+      const t0 = Date.now();
+      vi.useFakeTimers({ toFake: ['Date'], now: t0 });
+      alertEndsInS = 120;
+      const live = await get('/api/v1/events?source=noaa');
+      expect(live.body.total).toBe(3);
+      vi.setSystemTime(t0 + 150_000); // the alerts ended 30s ago; the 300s snapshot is still cached
+      const later = await get('/api/v1/events?source=noaa');
+      expect(later.body.total).toBe(0);
+      expect(later.body.total_expired).toBe(3);
+      const all = await get('/api/v1/events?source=noaa&lifecycle=all');
+      expect(all.body.data.every(e => e.lifecycle === 'expired')).toBe(true);
+    });
     it('a mixed request is limited by the source with the least freshness left', async () => {
       const t0 = Date.now();
       vi.useFakeTimers({ toFake: ['Date'], now: t0 });
@@ -179,7 +201,7 @@ describe('/api/v1/events (end to end, mocked upstreams)', () => {
     });
     it('a mixed request uses its fastest-refreshing source', async () => {
       const { res } = await get('/api/v1/events?source=who,usgs-day');
-      expect(res.headers.get('cache-control')).toMatch(/s-maxage=120\b/);
+      expect(res.headers.get('cache-control')).toMatch(/s-maxage=(119|120)\b/);
     });
     it('different filters and pages reuse one upstream snapshot instead of refetching', async () => {
       const first = await get('/api/v1/events?source=usgs-day&limit=50');

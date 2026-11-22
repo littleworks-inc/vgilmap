@@ -30,7 +30,7 @@ export const SOURCE_META: SourceMeta[] = [
   { key: 'nasa-firms', label: 'NASA FIRMS', domain: 'climate', staleAfterHours: 24, refreshSeconds: 1800, precision: 'exact',
     coverage: 'Global satellite fire detections, last 24 hours. Sampled: only the ~50 strongest (by radiative power) are kept, and low-confidence detections are dropped' },
   { key: 'noaa', label: 'NOAA Alerts', domain: 'climate', staleAfterHours: 12, refreshSeconds: 300, precision: 'area',
-    coverage: 'United States and territories only. Alerts without a polygon are listed but not placed on the map' },
+    coverage: 'United States and territories only. Alerts without a polygon are listed but not placed on the map. An alert drops off when it ends, even if we are serving a retained copy of the feed' },
   { key: 'conflict-rss', label: 'Conflict News (RSS)', domain: 'conflict', staleAfterHours: 12, refreshSeconds: 600, precision: 'country',
     coverage: 'English-language headlines (BBC, DW, Al Jazeera, Guardian, NPR) that name a country; placed at that country, not at the event' },
   { key: 'gdelt', label: 'GDELT Conflict', domain: 'conflict', staleAfterHours: 24, optional: true, refreshSeconds: 900, precision: 'country',

@@ -3,10 +3,10 @@
  * totals and pages always agree. Totals are computed on the full filtered set BEFORE pagination.
  */
 import type { Domain, Severity, VigilEvent } from '../types';
-import { isMappable } from '../types';
+import { isExpired, isMappable } from '../types';
 import type { SourceResult, SourceStatus } from './engine';
 
-export const API_VERSION = '1.2.0';
+export const API_VERSION = '1.3.0';
 export const DEFAULT_LIMIT = 100;
 export const MAX_LIMIT = 1000;
 
@@ -24,6 +24,8 @@ export interface EventQuery {
   sources?: string[];
   /** 'map' = events with a place; 'nomap' = list-only events. */
   location: 'all' | 'map' | 'nomap';
+  /** 'active' (default) hides events whose `expiresAt` has passed; 'expired' shows only those; 'all' both. */
+  lifecycle: 'active' | 'expired' | 'all';
   limit: number;
   cursor?: Cursor;
 }
@@ -99,10 +101,11 @@ export function parseQuery(params: URLSearchParams, known: { sources: string[] }
   const sev = single(params, 'severity');
   const sinceRaw = single(params, 'since');
   const loc = single(params, 'location');
+  const life = single(params, 'lifecycle');
   const limitRaw = single(params, 'limit');
   const cursorRaw = single(params, 'cursor');
 
-  const q: EventQuery = { location: 'all', limit: DEFAULT_LIMIT };
+  const q: EventQuery = { location: 'all', lifecycle: 'active', limit: DEFAULT_LIMIT };
   if (domains) q.domains = oneOf('domain', domains, DOMAINS);
   if (sources) q.sources = oneOf('source', sources, known.sources);
   if (sev) q.minSeverity = oneOf('severity', [sev], Object.keys(SEVERITY_ORDER) as Severity[])[0];
@@ -112,6 +115,7 @@ export function parseQuery(params: URLSearchParams, known: { sources: string[] }
     q.since = t;
   }
   if (loc) q.location = oneOf('location', [loc], ['all', 'map', 'nomap'] as const)[0];
+  if (life) q.lifecycle = oneOf('lifecycle', [life], ['active', 'expired', 'all'] as const)[0];
   if (limitRaw !== null) {
     const n = /^\d+$/.test(limitRaw) ? parseInt(limitRaw, 10) : NaN;
     if (!(n >= 1 && n <= MAX_LIMIT)) throw new QueryError(`Invalid "limit" "${limitRaw}": use a whole number from 1 to ${MAX_LIMIT}`);
@@ -142,7 +146,7 @@ export function mergeEvents(results: Array<{ events: VigilEvent[] }>): VigilEven
 }
 
 /** Every filter except pagination. */
-export function filterEvents(events: VigilEvent[], q: EventQuery): VigilEvent[] {
+export function filterEvents(events: VigilEvent[], q: EventQuery, now: number = Date.now()): VigilEvent[] {
   const domains = q.domains ? new Set<string>(q.domains) : null;
   const min = q.minSeverity ? SEVERITY_ORDER[q.minSeverity] : 0;
   return events.filter(e => {
@@ -151,6 +155,7 @@ export function filterEvents(events: VigilEvent[], q: EventQuery): VigilEvent[] 
     if (q.since !== undefined && new Date(e.timestamp).getTime() < q.since) return false;
     if (q.location === 'map' && !isMappable(e)) return false;
     if (q.location === 'nomap' && isMappable(e)) return false;
+    if (q.lifecycle !== 'all' && isExpired(e, now) !== (q.lifecycle === 'expired')) return false;
     return true;
   });
 }
@@ -199,6 +204,10 @@ export interface EventsResponse {
   count: number;              // events in this page
   total: number;              // events matching the filters, before pagination
   total_unfiltered: number;   // events from the selected sources, before any filter
+  /** Events in the selected sources whose `expiresAt` has passed (hidden unless ?lifecycle=expired|all). */
+  total_expired: number;
+  /** The earliest moment a currently active, matching event ends: the response is stale after it. */
+  next_expiry: string | null;
   /** Pass as ?cursor= to get the next page; null on the last page. */
   next_cursor: string | null;
   summary: ReturnType<typeof summarize>;
@@ -209,14 +218,19 @@ export interface EventsResponse {
 /** Build the one response shape every endpoint shares. */
 export function buildEventsResponse(results: SourceResult[], q: EventQuery, now: number = Date.now()): EventsResponse {
   const merged = mergeEvents(results);
-  const filtered = filterEvents(merged, q);
-  const { page, nextCursor } = paginate(filtered, q);
+  const filtered = filterEvents(merged, q, now);
+  const { page: rawPage, nextCursor } = paginate(filtered, q);
+  // Lifecycle is stamped at read time, from the clock, so a cached or retained event never claims to be current.
+  const page = rawPage.map(e => ({ ...e, lifecycle: isExpired(e, now) ? 'expired' as const : 'active' as const }));
+  const upcoming = filtered.map(e => (e.expiresAt ? Date.parse(e.expiresAt) : NaN)).filter(t => Number.isFinite(t) && t > now);
   const sources = results.map(r => r.status);
   // "ok" means at least one selected source produced data (live or retained).
   const ok = results.length === 0 || results.some(r => r.status.status !== 'error' || r.status.retained);
   return {
     ok, version: API_VERSION, generated: new Date(now).toISOString(),
     count: page.length, total: filtered.length, total_unfiltered: merged.length,
+    total_expired: merged.filter(e => isExpired(e, now)).length,
+    next_expiry: upcoming.length > 0 ? new Date(Math.min(...upcoming)).toISOString() : null,
     next_cursor: nextCursor, summary: summarize(filtered), sources, data: page,
   };
 }

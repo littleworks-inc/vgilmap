@@ -19,7 +19,7 @@ It is a monitor, not a ground-truth feed: every layer has limits, and each event
 | 🌋 USGS 24h | Global earthquakes of every magnitude, last 24 hours | Exact location | every 2 min |
 | 🌋 USGS Significant | Global earthquakes of M4.5+, last 7 days | Exact location | every 15 min |
 | 🌩 NASA FIRMS | Global satellite fire detections, last 24 hours. Sampled: only the ~50 strongest (by radiative power) are kept, and low-confidence detections are dropped | Exact location | every 30 min |
-| 🌩 NOAA Alerts | United States and territories only. Alerts without a polygon are listed but not placed on the map | Area centre | every 5 min |
+| 🌩 NOAA Alerts | United States and territories only. Alerts without a polygon are listed but not placed on the map. An alert drops off when it ends, even if we are serving a retained copy of the feed | Area centre | every 5 min |
 | ⚔️ Conflict News (RSS) | English-language headlines (BBC, DW, Al Jazeera, Guardian, NPR) that name a country; placed at that country, not at the event | Country estimate | every 10 min |
 | ⚔️ GDELT Conflict *(optional)* | Global news index; often rate-limited, so treated as an optional extra | Country estimate | every 15 min |
 | 🏥 WHO Outbreak News | Global, but WHO publishes only a few Disease Outbreak News items a month | Country estimate | every 1 h |
@@ -165,6 +165,8 @@ interface VigilEvent {
   source: string           // 'USGS' | 'NASA FIRMS' | 'WHO' | ...
   sourceUrl: string
   confidence: number       // 0–1
+  expiresAt?: string       // when it stops being current (e.g. a weather alert's end); absent = no natural end
+  lifecycle?: 'active' | 'expired'   // derived when served, from the clock
   tags: string[]
   metadata?: Record<string, unknown>
 }
@@ -204,19 +206,22 @@ curl "https://vgilmap.vercel.app/api/v1/events?source=usgs-day,noaa&limit=1000&c
 | `severity` | string | Minimum level: `info`, `low`, `medium`, `high`, `critical` |
 | `since` | ISO datetime | Only events after this timestamp |
 | `location` | `map` / `nomap` | Only events with / without a place on the map |
+| `lifecycle` | `active` (default) / `expired` / `all` | Events whose `expiresAt` has passed are hidden by default |
 | `limit` | integer | Page size, 1 to 1000 (default 100). Out-of-range values are rejected, not clamped |
 | `cursor` | string | Pass `next_cursor` from the previous response to get the next page |
 
-`total` and `summary` describe **everything matching the filters, before pagination**. Pages use a keyset cursor over a stable order (newest first, ties by id), so events arriving or expiring between requests can never repeat or skip an event; `offset` is not supported. Unsupported filter values, impossible dates (`2026-02-30`), out-of-range limits, bad cursors and explicitly empty filters (`?source=`) are rejected with **400** and the list of valid values, never silently ignored or corrected. `sources` reports each source's health, whether it is being served from retained (stale) data, its coverage and its location precision. The response is `503` (never cached) only when no selected source can serve anything. Edge caching uses each source's *remaining* freshness (a WHO snapshot that is already 59 minutes old is cached for one more minute, not another hour), and a partial or failed source is held for only 30 seconds before upstream is asked again. The server keeps one snapshot per source, so different filters and pages reuse one upstream fetch and concurrent requests share it.
+`total` and `summary` describe **everything matching the filters, before pagination**. Pages use a keyset cursor over a stable order (newest first, ties by id), so events arriving or expiring between requests can never repeat or skip an event; `offset` is not supported. Unsupported filter values, impossible dates (`2026-02-30`), out-of-range limits, bad cursors and explicitly empty filters (`?source=`) are rejected with **400** and the list of valid values, never silently ignored or corrected. `sources` reports each source's health, whether it is being served from retained (stale) data, its coverage and its location precision. The response is `503` (never cached) only when no selected source can serve anything. Edge caching uses each source's *remaining* freshness (a WHO snapshot that is already 59 minutes old is cached for one more minute, not another hour), and a partial or failed source is held for only 30 seconds before upstream is asked again. A response is also never cached past the moment an alert in it ends (`next_expiry`), and an event's `lifecycle` is computed from the clock when it is served, so a cached or retained alert stops being shown as current once it expires. The server keeps one snapshot per source, so different filters and pages reuse one upstream fetch and concurrent requests share it.
 
 **Response (abridged):**
 ```json
 {
   "ok": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "count": 10,
   "total": 665,
   "total_unfiltered": 665,
+  "total_expired": 0,
+  "next_expiry": "2026-11-22T15:15:00.000Z",
   "next_cursor": "MTc5NTM1ODEwMDAwMHx1c2dzLW5jNzUy",
   "summary": { "total": 665, "by_domain": {}, "by_severity": {}, "by_precision": {}, "top_events": [] },
   "sources": [

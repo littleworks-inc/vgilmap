@@ -68,6 +68,19 @@ export type Category =
  */
 export type LocationPrecision = 'exact' | 'area' | 'country' | 'unknown';
 
+/** 'active' until `expiresAt` passes; events with no `expiresAt` are always active. */
+export type EventLifecycle = 'active' | 'expired';
+
+/**
+ * Has this event ended? Evaluated against a clock at the moment of use, never cached: a snapshot or a
+ * retained copy can outlive the alert it describes, and must not show it as current.
+ */
+export function isExpired(ev: Pick<VigilEvent, 'expiresAt'>, now: number = Date.now()): boolean {
+  if (!ev.expiresAt) return false;
+  const t = Date.parse(ev.expiresAt);
+  return Number.isFinite(t) && t <= now;
+}
+
 export interface EventLocation {
   precision?: LocationPrecision;   // filled in by the pipeline; see shared/pipeline/precision.ts
   lat: number;
@@ -91,6 +104,10 @@ export interface VigilEvent {
   confidence: number;         // 0–1
   tags: string[];
   relatedEvents?: string[];   // IDs of correlated events
+  /** When this stops being current (e.g. a weather alert's end time). Absent = no natural end. */
+  expiresAt?: string;         // ISO 8601
+  /** Derived when served (never stored): 'expired' once `expiresAt` has passed. */
+  lifecycle?: EventLifecycle;
   // Adapter-specific extras can live in metadata
   metadata?: Record<string, unknown>;
 }

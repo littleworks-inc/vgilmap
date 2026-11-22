@@ -49,7 +49,7 @@ const RETRY_AFTER_S = 30;
  * query could be served nearly two-hour-old data under a one-hour policy. For a response spanning
  * several sources the shortest remaining time wins. A degraded, partial or failed source is held
  * only for the short retry window (so recovery shows up quickly), and a response with no data at
- * all is never cached.
+ * all is never cached. It is also capped at the next moment an alert in the response expires.
  */
 export function cacheControl(body: EventsResponse): string {
   if (!body.ok) return 'no-store';
@@ -59,7 +59,9 @@ export function cacheControl(body: EventsResponse): string {
     const unhealthy = s.status === 'error' || s.status === 'degraded' || s.retained || s.warnings.length > 0;
     return (unhealthy ? Math.min(RETRY_AFTER_S, s.refreshSeconds) : s.refreshSeconds) - age;
   });
-  const ttl = remaining.length === 0 ? RETRY_AFTER_S : Math.max(0, Math.floor(Math.min(...remaining)));
+  let ttl = remaining.length === 0 ? RETRY_AFTER_S : Math.max(0, Math.floor(Math.min(...remaining)));
+  // Never cache past the moment an alert in this response ends, or the CDN would keep showing it as current.
+  if (body.next_expiry) ttl = Math.min(ttl, Math.max(0, Math.floor((Date.parse(body.next_expiry) - now) / 1000)));
   // Stale-while-revalidate never outlasts the freshness left, so it cannot stretch an old snapshot.
   return `public, s-maxage=${ttl}, stale-while-revalidate=${Math.min(60, ttl)}`;
 }

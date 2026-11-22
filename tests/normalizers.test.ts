@@ -34,6 +34,22 @@ describe('NOAA', () => {
   });
 });
 
+describe('NOAA alert lifetime', () => {
+  const withTimes = (ends: string | null, expires: string | null) => {
+    const f = alert('t', null);
+    f.properties.ends = ends as never; f.properties.expires = expires as never;
+    return normalizeNOAA({ type: 'FeatureCollection', features: [f] } as never)[0];
+  };
+  it('expires when the alert ENDS, and falls back to its expiry time', () => {
+    expect(withTimes('2026-11-20T18:00:00Z', '2026-11-21T10:00:00Z').expiresAt).toBe('2026-11-20T18:00:00.000Z');
+    expect(withTimes(null, '2026-11-21T10:00:00Z').expiresAt).toBe('2026-11-21T10:00:00.000Z');
+  });
+  it('has no expiry when the feed gives no usable time (it is never silently expired)', () => {
+    expect(withTimes(null, null).expiresAt).toBeUndefined();
+    expect(withTimes('garbage', 'also garbage').expiresAt).toBeUndefined();
+  });
+});
+
 describe('ReliefWeb (no DOM)', () => {
   const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>ReliefWeb - Disasters</title>
   <item><title>Haiti: Floods - Oct 2026</title><link>https://reliefweb.int/disaster/fl-2026-000201-hti</link>

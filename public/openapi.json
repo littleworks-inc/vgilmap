@@ -20,6 +20,7 @@
           { "name": "cursor", "in": "query", "description": "Pass next_cursor from the previous response to get the next page. Stable while events arrive or expire.", "schema": { "type": "string" } },
           { "name": "source", "in": "query", "description": "Comma-separated source keys. Default: every source except the optional GDELT extra", "schema": { "type": "string", "example": "usgs-day,noaa" } },
           { "name": "optional", "in": "query", "description": "Set to 1 to include optional sources in a whole-dataset request", "schema": { "type": "string", "enum": ["1"] } },
+          { "name": "lifecycle", "in": "query", "description": "active (default) hides events whose expiresAt has passed; expired shows only those; all shows both", "schema": { "type": "string", "enum": ["active","expired","all"], "default": "active" } },
           { "name": "location", "in": "query", "description": "map = events with a place on the map; nomap = list-only events", "schema": { "type": "string", "enum": ["map","nomap"] } },
           { "name": "since", "in": "query", "description": "ISO timestamp — only events after this time", "schema": { "type": "string", "format": "date-time" } }
         ],

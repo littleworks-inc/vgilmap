@@ -26,7 +26,7 @@ import type { RefreshOutcome } from './data/refresh';
 import { SOURCE_META } from '../shared/pipeline/sources';
 import { mergeEvents } from '../shared/pipeline/query';
 import type { CyberFocus, Domain, TimeWindowId, VigilEvent } from './types';
-import { DOMAIN_ICONS, DOMAIN_COLORS, DEFAULT_TIME_WINDOW, isMappable, matchesCyberFocus, timeWindowMs } from './types';
+import { DOMAIN_ICONS, DOMAIN_COLORS, DEFAULT_TIME_WINDOW, isExpired, isMappable, matchesCyberFocus, timeWindowMs } from './types';
 import { detectAnomalies } from './intelligence/anomaly';
 import type { SourceHealth } from './health/sourceHealth';
 import type { AnomalySignal } from './intelligence/anomaly';
@@ -352,11 +352,20 @@ export default function App() {
   // Time window first: sources mix ages (live quakes, multi-day ransomware claims, even
   // years-old archive items), so cap everything to the selected window. Measured from the
   // last refresh time so this stays a pure function of state.
+  //
+  // Expired events (a weather alert past its end time) are dropped too, against a clock that ticks
+  // every minute: an alert can end between refreshes, and a retained copy can outlive it.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setClock(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
   const windowedEvents = useMemo(() => {
-    if (!lastUpdated) return allEvents;
+    const live = allEvents.filter(ev => !isExpired(ev, clock));
+    if (!lastUpdated) return live;
     const cutoff = lastUpdated.getTime() - timeWindowMs(timeWindow);
-    return allEvents.filter(ev => new Date(ev.timestamp).getTime() >= cutoff);
-  }, [allEvents, lastUpdated, timeWindow]);
+    return live.filter(ev => new Date(ev.timestamp).getTime() >= cutoff);
+  }, [allEvents, lastUpdated, timeWindow, clock]);
 
   const filteredEvents = useMemo(() => {
     const byDomain = windowedEvents.filter(ev => activeDomains.has(ev.domain));
