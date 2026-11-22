@@ -47,6 +47,26 @@
         }
       }
     },
+    "/api/v1/incidents": {
+      "get": {
+        "summary": "Cyber reports grouped into incidents, with an evidence label per report",
+        "description": "Several reports about one attack (an attacker claim, a news article, the organization's own statement, a breach-catalog entry) become one incident. CISA KEV vulnerabilities are never grouped. Filters apply to reports before grouping. Same validation, cursor pagination and caching as /api/v1/events.",
+        "parameters": [
+          { "name": "min_reports", "in": "query", "description": "Keep only incidents backed by at least this many reports (1 to 999)", "schema": { "type": "integer", "default": 1 } },
+          { "name": "source", "in": "query", "description": "Cyber source keys (cyber, cyber-news, cyber-breaches). Default: all three", "schema": { "type": "string" } },
+          { "name": "severity", "in": "query", "schema": { "type": "string", "enum": ["info","low","medium","high","critical"] } },
+          { "name": "since", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "location", "in": "query", "schema": { "type": "string", "enum": ["map","nomap"] } },
+          { "name": "lifecycle", "in": "query", "schema": { "type": "string", "enum": ["active","expired","all"] } },
+          { "name": "limit", "in": "query", "description": "Page size, 1 to 1000", "schema": { "type": "integer", "default": 100, "maximum": 1000 } },
+          { "name": "cursor", "in": "query", "description": "next_cursor from the previous response", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "400": { "description": "Unsupported or empty filter, impossible date, bad limit/cursor/min_reports. Body: { ok: false, error, valid? }" },
+          "200": { "description": "Incidents, newest report first. Each has reports[] (id, source, evidence, title, url, timestamp, occurredAt?), evidence[] (strongest first), claimedBy, groups, sectors, countryCodes, firstSeen, lastSeen, severity, category, placeId. summary.multi_report counts incidents with more than one report; this is not independent corroboration." }
+        }
+      }
+    },
     "/api/v1/summary": {
       "get": {
         "summary": "Event counts by domain and severity",

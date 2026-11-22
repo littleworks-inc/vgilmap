@@ -104,6 +104,111 @@ describe('Cyber news', () => {
   });
 });
 
+describe('Evidence labels: a statement verb alone proves neither victim nor confirmation', () => {
+  const item = (title: string) => ({ title, link: `https://ex.com/${encodeURIComponent(title)}`, date: '2026-11-20T08:00:00Z', description: '', feed: 'Test Feed' });
+  const read = (title: string) => normalizeCyberNews({ items: [item(title)] }).events[0];
+  const notVictimOrConfirmed = (title: string) => {
+    const e = read(title);
+    expect(e.evidence, title).toBe('report');
+    expect(e.metadata?.impacted, title).toBeUndefined();
+  };
+
+  describe('generic incident vocabulary does not establish ownership (it may belong to someone else)', () => {
+    it.each([
+      'Microsoft says ransomware attacks hit hospitals worldwide',
+      'Microsoft says ransomware attacks disrupt hospital operations',
+      'CISA confirms ransomware attackers stole hospital patient records',
+      'Microsoft says ransomware attack disrupted hospital systems',
+      'FBI confirms ransomware attack shut down school networks and exposed student records',
+    ])('%s', notVictimOrConfirmed);
+  });
+
+  describe('negation and denial, whatever the punctuation', () => {
+    it.each([
+      'Acme confirms third-party breach did not affect its systems',
+      'Acme says ransomware attack did not affect its systems',
+      "Acme says ransomware attack didn't affect its systems",
+      'Acme says ransomware attack didn\u2019t affect its systems',   // curly apostrophe
+      'Acme says ransomware attack wasn\u2019t successful against its network',
+      'Acme denies it was hit by ransomware attack',
+    ])('%s', notVictimOrConfirmed);
+  });
+
+  describe('hedged or investigating language is not a confirmation', () => {
+    it.each([
+      'Acme says it is investigating claims of a data breach',
+      'Acme says it is looking into a possible ransomware attack on its systems',
+      'Acme says it is aware of reports of a cyberattack on its network',
+    ])('%s', title => {
+      const e = read(title);
+      expect(e.evidence).toBe('report');   // the organization is named, but nothing is confirmed
+    });
+  });
+
+  it('third-party framing names the affected organization but is not its own confirmation', () => {
+    const e = read('Acme confirms vendor breach exposed its customer records');
+    expect(e.evidence).toBe('report');
+  });
+
+  describe('a real self-reference is a confirmation', () => {
+    it.each([
+      ['Asahi confirms it was hit by a ransomware attack', 'Asahi'],
+      ['Bell Canada says hackers stole its customer data in a breach', 'Bell Canada'],
+      ['Dollar General discloses it was hit by ransomware attack', 'Dollar General'],
+      ['Acme notifies customers of data breach', 'Acme'],
+      ['Acme warns customers after hackers breached its network', 'Acme'],
+      ['Acme says its systems were encrypted in a ransomware attack', 'Acme'],
+    ])('%s', (title, org) => {
+      const e = read(title);
+      expect(e.evidence).toBe('confirmed');
+      expect(e.metadata?.impacted).toBe(org);
+    });
+  });
+
+  it('a formal statement with no self-reference is treated as news: this trades recall for precision', () => {
+    // A genuine statement, but nothing in the headline refers back to the speaker.
+    notVictimOrConfirmed('Asahi confirms ransomware attack disrupted operations');
+  });
+
+  it('an incident verb makes the organization the victim, but is a report, not its own statement', () => {
+    const e = read('Container Store restores systems after cyberattack');
+    expect(e.metadata?.impacted).toBe('Container Store');
+    expect(e.evidence).toBe('report');
+  });
+});
+
+describe('Evidence labels (who says it happened)', () => {
+  const item = (title: string) => ({ title, link: `https://ex.com/${encodeURIComponent(title)}`, date: '2026-11-20T08:00:00Z', description: '', feed: 'Test Feed' });
+  const evidenceOf = (title: string) => normalizeCyberNews({ items: [item(title)] }).events[0]?.evidence;
+
+  it('news where the organization affirms its own incident is org-confirmed', () => {
+    expect(evidenceOf('Asahi confirms it was hit by a ransomware attack that disrupted operations')).toBe('confirmed');
+    expect(evidenceOf('Bell Canada notifies customers of data breach')).toBe('confirmed');
+  });
+  it('news that is only reporting is a news report', () => {
+    expect(evidenceOf('Hackers breach hospital network, steal patient data')).toBe('report');
+    expect(evidenceOf('Ransomware gang leaks data from Midwest school district')).toBe('report');
+  });
+  it('an advisory "warns of" something is not a victim speaking; a victim "warns customers" is', () => {
+    const impacted = (title: string) => normalizeCyberNews({ items: [item(title)] }).events[0]?.metadata?.impacted;
+    expect(impacted('CISA Warns of 4 Exploited Flaws Linked to Ransomware Attacks')).toBeUndefined();
+    expect(impacted('GnuPG Warns Critical Flaw Could Expose App Data via Malicious Input')).toBeUndefined();
+    expect(impacted('Bell Canada warns customers of data breach after hackers stole records')).toBe('Bell Canada');
+  });
+  it('a third party saying something is not the organization confirming it', () => {
+    // "Amazon says Chinese hackers ..." is Amazon reporting on someone else: no victim guess, so just a report.
+    expect(evidenceOf('Amazon says Chinese hackers exploited a zero-day in attacks')).toBe('report');
+  });
+  it('ransomware leak-site listings are attacker claims; CISA KEV is an official advisory', () => {
+    const r = normalizeCyber({
+      victims: [{ victim: 'Acme', group: 'qilin', country: 'US', attackdate: '2026-11-20T00:00:00Z' }],
+      kev: [{ cveID: 'CVE-2026-1', vendorProject: 'Acme', product: 'Router', dateAdded: '2026-11-19' }],
+    });
+    expect(r.events.find(e => e.category === 'ransomware')?.evidence).toBe('claim');
+    expect(r.events.find(e => e.category === 'vulnerability')?.evidence).toBe('official');
+  });
+});
+
 describe('Cyber (ransomware + CISA KEV)', () => {
   const kev = [{ cveID: 'CVE-2026-0001', vendorProject: 'Acme', product: 'Router', dateAdded: '2026-11-19', shortDescription: 'Bad bug', knownRansomwareCampaignUse: 'Known' }];
   it('warns when one feed is down but still returns the other', () => {

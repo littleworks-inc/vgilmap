@@ -51,11 +51,68 @@ function classify(title: string): Kind | null {
  * malware and espionage stories get no guess.)
  */
 const VICTIM_CATEGORIES = new Set(['data-breach', 'ransomware', 'cyberattack', 'ddos']);
-function guessVictim(title: string, category: string): string | undefined {
+
+// The organization is the subject of an INCIDENT verb: it is the one that was hit.
+const INCIDENT_VERB = /^(.{2,60}?)\s+(?:suffers|suffered|hit by|hacked|breached|restores)\b(.*)$/i;
+
+// The organization is the subject of a STATEMENT verb: it is saying something, which may or may not be
+// about itself. The audience forms ("notifies customers", "warns customers") are first so they win over
+// the bare verbs; addressing its own customers is itself a statement about its own incident.
+const STATEMENT_VERB = /^(.{2,60}?)\s+((?:notifies|notified|warns)\s+(?:its\s+)?(?:customers|users|clients|patients|employees|members|students|affected)|says|confirms|confirmed|discloses|disclosed|reveals|reports?)\b(.*)$/i;
+const AUDIENCE_FORM = /^(?:notifies|notified|warns)\s/i;
+
+// What makes a statement about the speaker's OWN incident. Generic nouns ("operations", "systems",
+// "patients", "records") do NOT: "Microsoft says ransomware attacks disrupt hospital operations" and
+// "CISA confirms attackers stole hospital patient records" are about someone else's. Only a real
+// self-reference counts: its / itself / our / we / us, or "it was|has|detected|...".
+const SELF_REFERENCE = /\b(?:its|itself|our|we|us)\b|\bit\s+(?:was|has|had|is|detected|discovered|identified|experienced|suffered|became|fell)\b/i;
+// Hedged or unverified language: the organization is not (yet) confirming anything.
+const HEDGED = /\b(?:investigat\w*|looking into|aware of|reviewing|probing|examining|claims?|claimed|alleg\w*|unconfirmed|may have|might have|possibly|possible|potential|suspected|reportedly|rumou?rs?)\b/i;
+// Negation or denial, checked after quotes are normalised ("didn’t" and "didn't" are the same word).
+const NEGATED = /\b(?:not|no|never|denies|denied|unaffected|without|rejects|refutes|disputes|didn'?t|doesn'?t|wasn'?t|isn'?t|hasn'?t|haven'?t|won'?t|cannot|can'?t)\b/i;
+const THIRD_PARTY = /\b(?:third[- ]party|vendors?|suppliers?|partners?|contractors?|processors?|service providers?)\b/i;
+
+/** Typographic quotes and apostrophes to plain ASCII, so patterns written with ' also match ’. */
+function plainQuotes(s: string): string {
+  return s.replace(/[\u2018\u2019\u201B\u2032]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"');
+}
+
+interface Guess {
+  name: string;
+  /** The organization itself is affirmatively confirming its own incident (and not hedging, denying or deflecting). */
+  statement: boolean;
+}
+
+/**
+ * Two separate questions: WHO the victim is, and whether the organization CONFIRMED it.
+ *  - An incident verb makes its subject the victim, but that is reporting, not a statement.
+ *  - A statement verb makes its subject the victim only if the headline refers back to the speaker's own
+ *    incident (a real self-reference) without negating it; it is a confirmation only if it also is not
+ *    hedged ("investigating claims of…") and not about a third party.
+ */
+function guessVictim(rawTitle: string, category: string): Guess | undefined {
   if (!VICTIM_CATEGORIES.has(category)) return undefined;
-  const m = title.match(/^(.{2,60}?)\s+(?:says|confirms|confirmed|discloses|disclosed|warns|reveals|notifies|suffers|suffered|hit by|hacked|breached|restores|reports?)\b/i);
-  const v = m?.[1]?.trim();
-  return v && !/^(hackers?|attackers?|researchers?|new)$/i.test(v) && v.split(/\s+/).length <= 6 ? v : undefined;
+  const title = plainQuotes(rawTitle);
+  // An organization name never contains a speech/denial verb or an "it was ..." clause: if it seems to,
+  // the "subject" is really a sentence ("Acme denies it was" ...), so no victim is named.
+  const SENTENCE = /\b(?:says?|said|confirm(?:s|ed)?|disclos(?:es|ed)|reveal(?:s|ed)|den(?:y|ies|ied)|notif(?:ies|ied)|warns?|claims?|admits?|it\s+(?:was|is|has|had)|that)\b/i;
+  const usable = (v: string | undefined) => v && !/^(hackers?|attackers?|researchers?|new)$/i.test(v.trim()) && !SENTENCE.test(v) && v.trim().split(/\s+/).length <= 6 ? v.trim() : undefined;
+
+  const hit = INCIDENT_VERB.exec(title);
+  const said = STATEMENT_VERB.exec(title);
+  // If both kinds of verb appear ("Dollar General discloses it was hit by ransomware"), the one that
+  // comes first owns the subject: its match has the shorter subject.
+  if (hit && (!said || hit[1].length < said[1].length)) {
+    const name = usable(hit[1]);
+    return name ? { name, statement: false } : undefined;
+  }
+  if (!said) return undefined;
+  const name = usable(said[1]);
+  if (!name) return undefined;
+  const verb = said[2], rest = said[3];
+  if (NEGATED.test(rest)) return undefined;                                       // denies, or says it was not affected
+  if (!AUDIENCE_FORM.test(verb) && !SELF_REFERENCE.test(rest)) return undefined;  // says something, but not about itself
+  return { name, statement: !HEDGED.test(rest) && !THIRD_PARTY.test(rest) };
 }
 
 /**
@@ -98,7 +155,8 @@ export function normalizeCyberNews(json: NewsInput): NormalizeResult {
     if (seen.has(id)) continue;
     seen.add(id);
 
-    const victim = guessVictim(item.title, kind.category);
+    const guess = guessVictim(item.title, kind.category);
+    const victim = guess?.name;
     const country = victimCountry(item.title);
     events.push({
       id,
@@ -114,6 +172,7 @@ export function normalizeCyberNews(json: NewsInput): NormalizeResult {
       source: item.feed,
       sourceUrl: item.link,
       confidence: 0.6, // headline-derived classification
+      evidence: guess?.statement ? 'confirmed' : 'report',
       tags: ['cyber', kind.category, 'news'],
       metadata: { kind: kind.label, ...(victim ? { impacted: victim } : {}), ...(country ? {} : { unlocated: true }) },
     });

@@ -12,6 +12,8 @@ import { CyberTrendsPanel } from './CyberTrendsPanel';
 import { DataHealthPanel } from './DataHealthPanel';
 import { SourceLink } from './SourceLink';
 import { PrecisionBadge } from './PrecisionBadge';
+import { EventEvidence, IncidentChip, IncidentReports } from './IncidentParts';
+import { incidentOf } from '../utils/incident';
 import { ListFilterBar } from './ListFilterBar';
 import { KevGroupHeader } from './KevGroupHeader';
 import { buildListRows } from '../utils/listRows';
@@ -80,7 +82,8 @@ export function MobileDrawer({
             const color = DOMAIN_COLORS[ev.domain] ?? '#6b7280';
             const icon = DOMAIN_ICONS[ev.domain] ?? '🌐';
             const unmapped = !isMappable(ev);
-            const opened = unmapped && openId === ev.id;
+            const incident = incidentOf(ev);
+            const opened = (unmapped || !!incident) && openId === ev.id;
             return (
               <div
                 key={ev.id}
@@ -126,11 +129,26 @@ export function MobileDrawer({
                     </span>
                     <SourceLink event={ev} />
                     <PrecisionBadge event={ev} />
+                    <EventEvidence event={ev} />
+                    {incident && <IncidentChip incident={incident} />}
+                    {incident && (
+                      // Its own tap target: tapping the row itself still flies the map to the incident.
+                      <span
+                        role="button" tabIndex={0} aria-expanded={opened}
+                        onClick={e => { e.stopPropagation(); setOpenId(opened ? null : ev.id); }}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpenId(opened ? null : ev.id); } }}
+                        style={{ color: '#7d8ba1', padding: '4px 2px', cursor: 'pointer' }}
+                      >
+                        {opened ? 'reports ▴' : 'reports ▾'}
+                      </span>
+                    )}
                     {unmapped && <span aria-hidden style={{ color: '#7d8ba1' }}>{opened ? 'details ▴' : 'details ▾'}</span>}
                   </div>
 
+                  {opened && incident && <IncidentReports incident={incident} />}
+
                   {/* What the event is about, for events that have no map popup to show it */}
-                  {opened && (
+                  {opened && unmapped && (
                     <div style={{ marginTop: '8px', fontSize: '12px', color: '#cbd5e1', lineHeight: 1.45, whiteSpace: 'normal', cursor: 'default' }}
                          onClick={e => e.stopPropagation()}>
                       <div>{ev.description}</div>

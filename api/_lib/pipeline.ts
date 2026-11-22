@@ -8,6 +8,8 @@
 import { MemoryStore, runSources } from '../../shared/pipeline/engine';
 import type { LastGoodStore, SourceLoader, SourceResult } from '../../shared/pipeline/engine';
 import { buildEventsResponse, parseQuery, QueryError } from '../../shared/pipeline/query';
+import { buildIncidentsResponse } from '../../shared/pipeline/incidents';
+import type { IncidentsResponse } from '../../shared/pipeline/incidents';
 import type { EventsResponse } from '../../shared/pipeline/query';
 import { SERVER_LOADERS } from './sources';
 
@@ -51,7 +53,7 @@ const RETRY_AFTER_S = 30;
  * only for the short retry window (so recovery shows up quickly), and a response with no data at
  * all is never cached. It is also capped at the next moment an alert in the response expires.
  */
-export function cacheControl(body: EventsResponse): string {
+export function cacheControl(body: Pick<EventsResponse, 'ok' | 'generated' | 'sources' | 'next_expiry'>): string {
   if (!body.ok) return 'no-store';
   const now = Date.parse(body.generated);
   const remaining = body.sources.map(s => {
@@ -73,8 +75,19 @@ export function errorResponse(err: unknown): Response {
   return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500, headers });
 }
 
+/** Run the cyber sources and group their reports into incidents (`?min_reports=` keeps corroborated ones). */
+export async function runIncidents(params: URLSearchParams, deps: PipelineDeps = {}): Promise<IncidentsResponse> {
+  const all = deps.loaders ?? SERVER_LOADERS;
+  const q = parseQuery(params, { sources: all.map(l => l.meta.key) });
+  const rawMin = params.get('min_reports');
+  if (params.has('min_reports') && !/^[1-9]\d{0,2}$/.test(rawMin ?? '')) throw new QueryError(`Invalid "min_reports" "${rawMin ?? ''}": use a whole number from 1 to 999`);
+  const selected = q.sources ? all.filter(l => q.sources!.includes(l.meta.key)) : all.filter(l => l.meta.domain === 'cyber');
+  const results = await runSources(selected, deps.store ?? store, { now: deps.now, timeoutMs: deps.timeoutMs, reuseFresh: true });
+  return buildIncidentsResponse(results, q, rawMin ? Number(rawMin) : 1, (deps.now ?? Date.now)());
+}
+
 /** Turn a pipeline result into an HTTP response (503 + no-store when nothing could be served). */
-export function toResponse(body: EventsResponse): Response {
+export function toResponse(body: EventsResponse | IncidentsResponse): Response {
   return new Response(JSON.stringify(body), {
     status: body.ok ? 200 : 503,
     headers: {

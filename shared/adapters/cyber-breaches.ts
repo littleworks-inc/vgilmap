@@ -63,6 +63,7 @@ export function normalizeBreaches({ breaches }: { breaches?: Breach[] }): VigilE
       source: 'Have I Been Pwned',
       sourceUrl: `https://haveibeenpwned.com/PwnedWebsites#${encodeURIComponent(b.name)}`,
       confidence: b.verified ? 0.95 : 0.8,
+      evidence: 'catalog',
       tags: ['data-breach', ...(b.sensitive ? ['sensitive'] : []), ...b.dataClasses.slice(0, 3).map(d => d.toLowerCase())],
       metadata: {
         impacted: b.title, domain: b.domain, pwnCount: b.pwnCount, dataClasses: b.dataClasses,

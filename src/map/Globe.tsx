@@ -13,6 +13,7 @@
  */
 
 import { PRECISION_META } from '../../shared/pipeline/precision';
+import { EVIDENCE_META } from '../../shared/types';
 import { useEffect, useRef, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -133,6 +134,7 @@ function eventsToGeoJSON(
         description: ev.description,
         sourceUrl: ev.sourceUrl,
         precision: ev.location.precision ?? 'exact',
+        evidence: ev.evidence ?? '',
         // Serialised as JSON strings — MapLibre flattens nested objects
         metadata: JSON.stringify(ev.metadata ?? {}),
         tags: JSON.stringify(ev.tags ?? []),
@@ -178,6 +180,15 @@ function renderPopup(props: PopupProps): string {
   const precisionNote = pm
     ? `<div style="color:#94a3b8;font-size:11px;margin-bottom:6px;line-height:1.4;">📍 <b>${esc(pm.label)}</b> — ${esc(pm.hint)}</div>`
     : '';
+
+  // Cyber: who says it happened, and how many reports stand behind this one incident.
+  const evKind = props.evidence as keyof typeof EVIDENCE_META | undefined;
+  const incident = meta.incident as { reportCount?: number; evidence?: Array<keyof typeof EVIDENCE_META>; sources?: string[] } | undefined;
+  const evidenceNote = incident?.reportCount
+    ? `<div style="color:#cbd5e1;font-size:11px;margin-bottom:6px;line-height:1.5;"><b>${esc(String(incident.reportCount))} reports</b> of one incident · ${(incident.evidence ?? []).map(k => `<span style="color:${EVIDENCE_META[k]?.color ?? '#94a3b8'}">${esc(EVIDENCE_META[k]?.label ?? k)}</span>`).join(' · ')}<br/><span style="color:#7d8ba1">${esc((incident.sources ?? []).join(', '))}</span></div>`
+    : evKind && EVIDENCE_META[evKind]
+      ? `<div style="font-size:11px;margin-bottom:6px;"><span style="color:${EVIDENCE_META[evKind].color}"><b>${esc(EVIDENCE_META[evKind].label)}</b></span> <span style="color:#7d8ba1">— ${esc(EVIDENCE_META[evKind].hint)}</span></div>`
+      : '';
 
   // ── secondary info line (domain / category aware) ───────
   let secondary = '';
@@ -304,6 +315,8 @@ function renderPopup(props: PopupProps): string {
       <div style="color:#64748b;font-size:11px;margin-bottom:6px;">${ts}</div>
 
       ${precisionNote}
+
+      ${evidenceNote}
 
       ${desc ? `<div style="color:#94a3b8;font-size:12px;margin-bottom:8px;line-height:1.4;">${esc(desc)}</div>` : ''}
 

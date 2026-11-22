@@ -167,6 +167,7 @@ interface VigilEvent {
   confidence: number       // 0–1
   expiresAt?: string       // when it stops being current (e.g. a weather alert's end); absent = no natural end
   lifecycle?: 'active' | 'expired'   // derived when served, from the clock
+  evidence?: 'confirmed' | 'catalog' | 'report' | 'claim' | 'official'   // who says it happened (cyber)
   tags: string[]
   metadata?: Record<string, unknown>
 }
@@ -216,7 +217,7 @@ curl "https://vgilmap.vercel.app/api/v1/events?source=usgs-day,noaa&limit=1000&c
 ```json
 {
   "ok": true,
-  "version": "1.3.0",
+  "version": "1.4.0",
   "count": 10,
   "total": 665,
   "total_unfiltered": 665,
@@ -239,6 +240,37 @@ curl "https://vgilmap.vercel.app/api/v1/events?source=usgs-day,noaa&limit=1000&c
   ]
 }
 ```
+
+### GET /api/v1/incidents
+
+Cyber reports grouped into **incidents**. A ransomware group's leak-site claim, a news article, the company's own statement and a breach-catalog entry about the same organization are four *reports* of one *incident*, and they carry different evidence:
+
+| Evidence | Meaning |
+|---|---|
+| `confirmed` | The affected organization itself said so ("Asahi confirms…") |
+| `catalog` | An independent breach catalog (Have I Been Pwned) |
+| `report` | News reporting, not confirmed by the organization |
+| `claim` | Published by the attacker on a leak site: unverified, and attackers sometimes lie |
+| `official` | A government or vendor advisory (CISA KEV) |
+
+```bash
+curl "https://vgilmap.vercel.app/api/v1/incidents?min_reports=2"     # incidents backed by more than one report
+```
+
+Same filters, validation, cursor pagination and caching as `/api/v1/events`, plus `min_reports`. Filters apply to the *reports* before grouping. Each incident lists its reports (oldest first, with source, evidence and link), the distinct evidence kinds, the ransomware group if one claimed it, first and last seen, the highest severity, and a `placeId` (the report whose location it uses).
+
+Grouping is deliberately conservative, because a wrong merge hides a real incident while a missed merge only shows two rows. Two reports are **candidates** when they name the same organization: the same **website**, then the same **normalized name** (legal suffixes and punctuation removed), then a guarded whole-word prefix ("Container Store" ~ "Container Store Group" counts; a short single word does not, so "Bell" is not "Bell Canada"). Candidates are merged strongest first, in an order that does not depend on the input order, and a merge is refused unless the **whole merged group** still satisfies both rules:
+
+- **One country.** A group is placed in at most one country. A pairwise check is not enough: a US and a German "Delta Services" must not join through a third report that names no country, and a shared website does not bypass this.
+- **One window.** Everything in an incident *occurred* within **21 days** of each other. The window limits the whole incident's span, not just neighbouring reports, so a chain of reports cannot stretch it indefinitely. "Occurred" uses the event's own date where the source gives one (a breach's own date, not when the catalog added it), so a 2020 breach added to Have I Been Pwned today does not merge with a current attack on the same company. Each report keeps its publication time (`timestamp`) and, when different, `occurredAt`.
+
+**CISA KEV entries are never grouped**: they describe a vulnerability known to be exploited, not an attack on a particular organization.
+
+Evidence and victim names from headlines are best-effort and err toward doing nothing. Two questions are answered separately. **Who is the victim?** An incident verb ("X was hacked", "X restores systems after a cyberattack") names its subject as the victim. A statement verb ("says", "confirms", "discloses") does *not* by itself: the headline must refer back to the speaker's **own** incident with a real self-reference (*its*, *itself*, *our*, *we*, *it was/has/detected…*) or have the organization address its own customers ("Acme notifies customers…"). Generic vocabulary such as "operations", "systems" or "patients" proves nothing, because it may belong to someone else: "Microsoft says ransomware attacks disrupt hospital operations" and "CISA confirms attackers stole hospital patient records" name no victim. **Was it confirmed?** Only if the statement is also not hedged ("investigating claims of…", "possible", "alleged"), not negated ("did not", "didn't" or "didn’t": quotes are normalised first) and not about a third party ("vendor breach"). Anything else is a news report. This trades recall for precision: a genuine statement with no self-reference ("Asahi confirms ransomware attack disrupted operations") is labelled a news report with no guessed victim.
+
+`summary.multi_report` counts incidents backed by more than one report. That is **not** independent corroboration: two outlets repeating one attacker claim, or two articles from one outlet, are still "multiple reports". It will be renamed corroborated only once report independence is established. An incident's `id` is stable while its earliest report is, and does not depend on input order; if the earliest report ages out of the feeds the id changes (a stable identity needs stored history). Incidents also carry the ransomware `groups`, `sectors` and `countryCodes` named by *any* of their reports, and the Cyber Trends filters match against those, so a claim folded into a news article still appears under its group.
+
+In the app, a multi-report incident shows as **one** dot and one row ("3 reports" with an evidence badge per kind); tap it to see each report and its link. Counts, the map and the list all mean "one incident".
 
 ### GET /api/v1/summary
 

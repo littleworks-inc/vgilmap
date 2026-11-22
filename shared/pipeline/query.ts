@@ -6,7 +6,7 @@ import type { Domain, Severity, VigilEvent } from '../types';
 import { isExpired, isMappable } from '../types';
 import type { SourceResult, SourceStatus } from './engine';
 
-export const API_VERSION = '1.3.0';
+export const API_VERSION = '1.4.0';
 export const DEFAULT_LIMIT = 100;
 export const MAX_LIMIT = 1000;
 

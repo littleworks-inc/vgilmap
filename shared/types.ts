@@ -68,6 +68,27 @@ export type Category =
  */
 export type LocationPrecision = 'exact' | 'area' | 'country' | 'unknown';
 
+/**
+ * How an event is known to be true: who is saying it.
+ *   confirmed — the affected organization itself said so (a statement, filing or notification)
+ *   catalog   — an independent breach catalog (Have I Been Pwned)
+ *   report    — news reporting, not confirmed by the organization
+ *   claim     — published by the attacker (a leak-site listing): unverified and possibly false
+ *   official  — a government or vendor advisory (CISA KEV)
+ */
+export type EvidenceKind = 'confirmed' | 'catalog' | 'report' | 'claim' | 'official';
+
+/** Strongest first. Used to pick which report represents a group and how labels are ordered. */
+export const EVIDENCE_ORDER: EvidenceKind[] = ['official', 'confirmed', 'catalog', 'report', 'claim'];
+
+export const EVIDENCE_META: Record<EvidenceKind, { label: string; hint: string; color: string }> = {
+  official:  { label: 'Official advisory',   color: '#38bdf8', hint: 'Published by a government or vendor advisory' },
+  confirmed: { label: 'Org-confirmed',       color: '#22c55e', hint: 'The affected organization itself has said this happened' },
+  catalog:   { label: 'Breach catalog',      color: '#a78bfa', hint: 'Listed by an independent breach catalog (Have I Been Pwned)' },
+  report:    { label: 'News report',         color: '#eab308', hint: 'Reported by a news outlet; not confirmed by the organization' },
+  claim:     { label: 'Attacker claim',      color: '#f97316', hint: 'Published by the attacker on a leak site: unverified, and attackers sometimes lie' },
+};
+
 /** 'active' until `expiresAt` passes; events with no `expiresAt` are always active. */
 export type EventLifecycle = 'active' | 'expired';
 
@@ -108,6 +129,10 @@ export interface VigilEvent {
   expiresAt?: string;         // ISO 8601
   /** Derived when served (never stored): 'expired' once `expiresAt` has passed. */
   lifecycle?: EventLifecycle;
+  /** Who says this happened (cyber events today); see EvidenceKind. */
+  evidence?: EvidenceKind;
+  /** Set when this event represents a group of reports about one incident (see shared/pipeline/incidents.ts). */
+  incidentId?: string;
   // Adapter-specific extras can live in metadata
   metadata?: Record<string, unknown>;
 }
@@ -159,6 +184,16 @@ export interface CyberFocus {
 export function matchesCyberFocus(ev: VigilEvent, f: CyberFocus): boolean {
   if (ev.category !== 'ransomware') return false;
   const m = ev.metadata ?? {};
+  // A displayed incident stands for several reports, and its representative may be a news article that
+  // carries none of the claim's group/sector/country: match against what ANY of its reports says.
+  const inc = m.incident as { groups?: string[]; sectors?: string[]; countryCodes?: string[] } | undefined;
+  if (inc) {
+    switch (f.dimension) {
+      case 'countries': return f.key === '??' ? !(inc.countryCodes?.length) : !!inc.countryCodes?.includes(f.key);
+      case 'sectors':   return f.key === 'Unknown' ? !inc.sectors?.length || inc.sectors.includes('Unknown') : !!inc.sectors?.includes(f.key);
+      case 'groups':    return !!inc.groups?.some(g => g.toLowerCase() === f.key);
+    }
+  }
   switch (f.dimension) {
     case 'countries': return String(m.countryCode ?? '') === (f.key === '??' ? '' : f.key);
     case 'sectors':   return String(m.sector ?? 'Unknown') === f.key;

@@ -88,6 +88,7 @@ function normalizeVictims(data: unknown): VigilEvent[] {
       source: 'ransomware.live',
       sourceUrl: v.url ?? 'https://www.ransomware.live',
       confidence: 0.8, // leak-site claims, not victim-confirmed
+      evidence: 'claim',
       tags: ['ransomware', sector.toLowerCase(), v.group.toLowerCase()],
       metadata: {
         victim: v.victim,
@@ -132,6 +133,7 @@ function normalizeKev(data: unknown): VigilEvent[] {
       source: 'CISA KEV',
       sourceUrl: `https://nvd.nist.gov/vuln/detail/${v.cveID}`,
       confidence: 0.99, // CISA only lists vulnerabilities with confirmed exploitation
+      evidence: 'official',
       tags: ['vulnerability', 'actively-exploited', ...(ransomware ? ['ransomware-linked'] : []), (v.vendorProject ?? '').toLowerCase()].filter(Boolean),
       metadata: {
         cve: v.cveID,

@@ -25,6 +25,7 @@ import { applyOutcome } from './data/refresh';
 import type { RefreshOutcome } from './data/refresh';
 import { SOURCE_META } from '../shared/pipeline/sources';
 import { mergeEvents } from '../shared/pipeline/query';
+import { collapseIncidents } from '../shared/pipeline/incidents';
 import type { CyberFocus, Domain, TimeWindowId, VigilEvent } from './types';
 import { DOMAIN_ICONS, DOMAIN_COLORS, DEFAULT_TIME_WINDOW, isExpired, isMappable, matchesCyberFocus, timeWindowMs } from './types';
 import { detectAnomalies } from './intelligence/anomaly';
@@ -360,12 +361,18 @@ export default function App() {
     const t = setInterval(() => setClock(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
-  const windowedEvents = useMemo(() => {
+  const windowedAll = useMemo(() => {
     const live = allEvents.filter(ev => !isExpired(ev, clock));
     if (!lastUpdated) return live;
     const cutoff = lastUpdated.getTime() - timeWindowMs(timeWindow);
     return live.filter(ev => new Date(ev.timestamp).getTime() >= cutoff);
   }, [allEvents, lastUpdated, timeWindow, clock]);
+
+  // Several reports about one cyber incident (an attacker's claim, a news article, the company's own
+  // statement) are shown once, as the strongest report, with the others one tap away. Map, list and
+  // counts all use this collapsed set so a dot, a row and a count each mean "one incident".
+  const collapsed = useMemo(() => collapseIncidents(windowedAll), [windowedAll]);
+  const windowedEvents = collapsed.events;
 
   const filteredEvents = useMemo(() => {
     const byDomain = windowedEvents.filter(ev => activeDomains.has(ev.domain));
@@ -397,10 +404,12 @@ export default function App() {
   // so the Data Health panel agrees with the chips and the list instead of showing all-time totals.
   const viewCounts = useMemo(() => {
     const inView = new Set(filteredEvents.map(e => e.id));
+    // A report folded into an incident is in view whenever the incident that represents it is.
+    for (const [member, primary] of collapsed.memberToPrimary) if (inView.has(primary)) inView.add(member);
     const out: Record<string, number> = {};
     for (const [key, ids] of Object.entries(sourceIds)) out[key] = ids.reduce((n, id) => n + (inView.has(id) ? 1 : 0), 0);
     return out;
-  }, [filteredEvents, sourceIds]);
+  }, [filteredEvents, sourceIds, collapsed]);
 
   // Sources that are down (optional extras are shown in Data Health but never raise a banner).
   const errors = useMemo(() => sourceHealth.filter(h => h.status === 'error' && !h.optional).map(h => h.label), [sourceHealth]);
@@ -424,6 +433,9 @@ export default function App() {
     hasDeepLinked.current = true;
     flyToEvent(ev);
   }, [allEvents, selectedId, flyToEvent]);
+
+  // A link to (or selection of) a report that is now part of an incident highlights the incident's row.
+  const listSelectedId = selectedId ? collapsed.memberToPrimary.get(selectedId) ?? selectedId : undefined;
 
   const handleSelectEvent = useCallback((ev: VigilEvent) => {
     setSelectedId(ev.id);
@@ -459,7 +471,7 @@ export default function App() {
       {!isMobile && (
         <Sidebar
           events={filteredEvents}
-          selectedId={selectedId}
+          selectedId={listSelectedId}
           loading={loading}
           error={errorMsg}
           lastUpdated={lastUpdated}
@@ -563,7 +575,7 @@ export default function App() {
       {isMobile && (
         <MobileDrawer
           events={filteredEvents}
-          selectedId={selectedId}
+          selectedId={listSelectedId}
           loading={loading}
           error={errorMsg}
           lastUpdated={lastUpdated}

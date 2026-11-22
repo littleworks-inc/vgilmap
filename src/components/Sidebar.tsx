@@ -10,6 +10,8 @@ import type { VigilEvent } from '../types';
 import { earthquakeColor, DOMAIN_COLORS, DOMAIN_ICONS, isMappable, NO_MAP_LOCATION } from '../types';
 import { SourceLink } from './SourceLink';
 import { PrecisionBadge } from './PrecisionBadge';
+import { EventEvidence, IncidentChip, IncidentReports } from './IncidentParts';
+import { incidentOf } from '../utils/incident';
 import { ListFilterBar } from './ListFilterBar';
 import { KevGroupHeader } from './KevGroupHeader';
 import { buildListRows } from '../utils/listRows';
@@ -261,12 +263,14 @@ export function Sidebar({
           // For earthquakes show the location label; for all others show the title
           const primaryText = ev.category === 'earthquake' ? ev.location.label : ev.title;
           const unmapped = !isMappable(ev);
-          const expanded = unmapped && openId === ev.id;
+          const incident = incidentOf(ev);
+          const expandable = unmapped || !!incident; // no-location events and multi-report incidents open in place
+          const expanded = expandable && openId === ev.id;
           // Mapped events fly the map to them. Unmapped ones have nowhere to fly, so the click
           // opens their details instead of doing nothing.
           const activate = () => {
             onSelectEvent(ev);
-            if (unmapped) setOpenId(expanded ? null : ev.id);
+            if (expandable) setOpenId(expanded ? null : ev.id);
           };
 
           return (
@@ -274,7 +278,7 @@ export function Sidebar({
               key={ev.id}
               role="button"
               tabIndex={0}
-              aria-expanded={unmapped ? expanded : undefined}
+              aria-expanded={expandable ? expanded : undefined}
               onClick={activate}
               onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); activate(); } }}
               style={{
@@ -331,6 +335,8 @@ export function Sidebar({
                   <SourceLink event={ev} />
                   <EventMeta event={ev} />
                   <PrecisionBadge event={ev} />
+                  <EventEvidence event={ev} />
+                  {incident && <IncidentChip incident={incident} />}
                   {/* One consistent marker for every event that is listed but not plotted */}
                   {!isMappable(ev) && (
                     <span
@@ -340,12 +346,15 @@ export function Sidebar({
                       {NO_MAP_LOCATION}
                     </span>
                   )}
-                  {unmapped && <span aria-hidden style={{ color: '#7d8ba1' }}>{expanded ? 'details ▴' : 'details ▾'}</span>}
+                  {expandable && <span aria-hidden style={{ color: '#7d8ba1' }}>{expanded ? 'details ▴' : 'details ▾'}</span>}
                   <ShareButton eventId={ev.id} />
                 </div>
 
+                {/* The reports behind a multi-report incident, each with its own evidence label */}
+                {expanded && incident && <IncidentReports incident={incident} />}
+
                 {/* What the event is about, for events that have no map popup to show it */}
-                {expanded && (
+                {expanded && unmapped && (
                   <div style={{ marginTop: '8px', fontSize: '12px', color: '#cbd5e1', lineHeight: 1.45, whiteSpace: 'normal', cursor: 'default' }}
                        onClick={e => e.stopPropagation()}>
                     <div>{ev.description}</div>
