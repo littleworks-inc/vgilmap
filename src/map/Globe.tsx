@@ -21,6 +21,7 @@ import type { VigilEvent } from '../types';
 import { isMappable } from '../types';
 import { escapeHtml as esc, safeHttpUrl } from '../utils/html';
 import { earthquakeColor, earthquakeRadius, DOMAIN_COLORS } from '../types';
+import { placePopup } from '../utils/popupPlacement';
 
 // ─── constants ─────────────────────────────────────────────
 
@@ -141,6 +142,30 @@ function eventsToGeoJSON(
       },
     })),
   };
+}
+
+// ─── popup placement ───────────────────────────────────────
+
+/**
+ * Open the hover popup on the side of the pointer that has room (see utils/popupPlacement), and cap its
+ * height so it never runs past the map's edge. MapLibre's automatic anchor ignores the popup's height, so
+ * a tall cyber popup in the middle of the map was cut off at the bottom.
+ */
+function fitPopupInMap(popup: maplibregl.Popup, map: maplibregl.Map, point: { x: number; y: number }): void {
+  const el = popup.getElement();
+  const content = el?.querySelector<HTMLElement>('.maplibregl-popup-content');
+  if (!el || !content) return;
+  content.style.maxHeight = ''; // measure the popup at its natural size first
+  content.style.overflow = '';
+  const box = map.getContainer();
+  const { anchor, maxHeight } = placePopup({
+    point, map: { w: box.clientWidth, h: box.clientHeight }, popup: { w: el.offsetWidth, h: el.offsetHeight },
+  });
+  if (el.offsetHeight > maxHeight) { content.style.maxHeight = `${maxHeight}px`; content.style.overflow = 'hidden'; }
+  if (popup.options.anchor !== anchor) {
+    popup.options.anchor = anchor;
+    popup.setLngLat(popup.getLngLat()); // re-run MapLibre's positioning with the new anchor
+  }
 }
 
 // ─── popup renderer ────────────────────────────────────────
@@ -564,12 +589,14 @@ export function Globe({ events, onEventClick }: GlobeProps) {
             offset: 14,
             closeButton: false,
             closeOnClick: false,
+            focusAfterOpen: false, // a hover popup must not steal keyboard focus from the page
             className: 'vigil-hover-popup',
           }).addTo(map);
         }
         popupRef.current
           .setLngLat(e.lngLat)
           .setHTML(renderPopup(props));
+        fitPopupInMap(popupRef.current, map, e.point);
       });
       map.on('mouseleave', LAYER_ID, () => {
         map.getCanvas().style.cursor = '';

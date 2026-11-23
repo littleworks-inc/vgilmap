@@ -41,6 +41,19 @@ html, body, #root {
   pointer-events: none !important;
 }
 
+/* Opened beside the point (tall popups): the arrow's coloured border is the one facing the point, and its
+   top/bottom borders are the transparent sides of the triangle, which the rule above must not colour in. */
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #1e293b !important;
+  border-top-color: transparent !important;
+  border-bottom-color: transparent !important;
+}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #1e293b !important;
+  border-top-color: transparent !important;
+  border-bottom-color: transparent !important;
+}
+
 .maplibregl-popup-close-button {
   color: #64748b !important;
   font-size: 16px !important;
