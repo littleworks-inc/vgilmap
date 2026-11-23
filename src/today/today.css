@@ -99,3 +99,6 @@
   .pg { padding: 16px 16px 56px; }
 }
 @media (prefers-reduced-motion: no-preference) { .card { transition: border-color .12s; } }
+
+/* While offline a 30px banner is fixed at the top (see OfflineBanner); the overlay starts below it. */
+html[data-offline] .today { top: 30px; }

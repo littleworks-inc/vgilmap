@@ -321,6 +321,10 @@ The app, the public API, Data Health, the legend and the README table pick it up
 
 ---
 
+## Offline
+
+VigilMap can be installed (manifest + icons) and opens without a connection. A small service worker (`public/sw.js`) caches **only the app shell**: the page, its scripts and styles, and the icons. It never caches `/api/*` or anything from another origin (map tiles, fonts), because a cached answer must not pass for a current one in a live-hazard app. While offline the page shows a banner with the time of the data it still holds and warns that alerts may have changed or ended, and it refreshes every source as soon as the connection returns. The worker is registered in production builds only. To try it: `npm run build && npx vite preview`, load the page once, stop the server, reload.
+
 ## Roadmap
 
 - [x] Economic & labor data sources (ReliefWeb + GDELT Economic)
@@ -331,7 +335,8 @@ The app, the public API, Data Health, the legend and the README table pick it up
 - [ ] API key system + Pro tier (webhooks, 90-day history)
 - [ ] Email/SMS alerts for a saved region
 - [ ] Historical timeline slider
-- [ ] PWA manifest + offline support
+- [x] PWA manifest and installable icons
+- [x] Offline app shell: the app opens with no connection and says it is offline (live data is never cached; see below)
 
 ---
 

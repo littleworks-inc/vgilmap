@@ -21,6 +21,9 @@ import { usePersistedBool } from './hooks/usePersistedBool';
 import { readViewState, writeViewState, isDefaultView } from './utils/viewState';
 import { MobileDrawer } from './components/MobileDrawer';
 import { TodayView } from './today/TodayView';
+import { OfflineBanner } from './components/OfflineBanner';
+import { OFFLINE_BANNER_HEIGHT } from './utils/offline';
+import { useOnline } from './hooks/useOnline';
 import { fetchSource } from './data/pipeline';
 import { applyOutcome } from './data/refresh';
 import type { RefreshOutcome } from './data/refresh';
@@ -336,6 +339,17 @@ export default function App() {
     return () => { timers.forEach(clearInterval); document.removeEventListener('visibilitychange', onVisible); };
   }, [load, loadSource]);
 
+  // Offline: say so (with how old the data is), and refresh everything the moment the connection returns.
+  const online = useOnline();
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-offline', !online); // lets the Today overlay make room for the banner
+  }, [online]);
+  useEffect(() => {
+    const refreshAll = () => { void load(); };
+    window.addEventListener('online', refreshAll);
+    return () => window.removeEventListener('online', refreshAll);
+  }, [load]);
+
   // Keep the URL and saved view in sync with the controls.
   const hiddenDomains = useMemo(() => ALL_DOMAINS.filter(d => !activeDomains.has(d)), [activeDomains]);
   const viewIsDefault = isDefaultView({ timeWindow, hidden: hiddenDomains });
@@ -476,10 +490,13 @@ export default function App() {
       display: 'flex',
       height: '100vh',
       width: '100vw',
+      boxSizing: 'border-box',
+      paddingTop: online ? 0 : OFFLINE_BANNER_HEIGHT,
       overflow: 'hidden',
       background: '#0a0f1e',
       fontFamily: 'system-ui, -apple-system, sans-serif',
     }}>
+      {!online && <OfflineBanner lastUpdated={lastUpdated} />}
       {/* Desktop sidebar — hidden on mobile */}
       {!isMobile && (
         <Sidebar
