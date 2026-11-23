@@ -261,6 +261,18 @@ describe('seen snapshot storage', () => {
     saveSeen({ a: { n: 2, evidence: ['claim', 'report'] } }, 123, s);
     expect(loadSeen(s)).toEqual({ at: 123, items: { a: { n: 2, evidence: ['claim', 'report'] } } });
   });
+  it('stores a filtered view as partial, so what it left out is not "new" when shown later', () => {
+    const s = memory();
+    saveSeen({ a: { n: 1, evidence: [] } }, 123, s, true);
+    expect(loadSeen(s)).toEqual({ at: 123, items: { a: { n: 1, evidence: [] } }, partial: true });
+
+    // A weather alert published BEFORE the saved visit, absent only because the domain was hidden, is not new...
+    const old = ev('w1', { domain: 'climate', category: 'weather', severity: 'high', source: 'NOAA NWS', timestamp: at(30), title: 'Old warning' });
+    const fresh = ev('w2', { domain: 'climate', category: 'weather', severity: 'high', source: 'NOAA NWS', timestamp: at(0.5), title: 'Fresh warning' });
+    const seen = loadSeen(s)!;
+    const b = buildBriefing({ events: [old, fresh], seen: { ...seen, at: NOW - HOUR }, now: NOW });
+    expect(b.sinceLast.map(c => c.id)).toEqual(['w2']); // ...but one published after it still is
+  });
   it('treats missing, corrupt or wrongly-shaped data as "no previous visit"', () => {
     const s = memory();
     expect(loadSeen(s)).toBeNull();

@@ -45,14 +45,18 @@ export function loadSeen(storage: StorageLike | null = defaultStorage()): SeenSn
   }
 }
 
-/** Save what is on screen now. Never throws: remembering is a convenience, not a requirement. */
-export function saveSeen(items: Record<string, SeenItem>, now: number, storage: StorageLike | null = defaultStorage()): void {
+/**
+ * Save what is on screen now. Never throws: remembering is a convenience, not a requirement.
+ * `incomplete` says the screen was filtered (hidden domains, a narrower window), so what is missing was
+ * not necessarily absent from the world: the snapshot is stored as partial.
+ */
+export function saveSeen(items: Record<string, SeenItem>, now: number, storage: StorageLike | null = defaultStorage(), incomplete = false): void {
   try {
     // `items` arrives most-important-first, so a cut drops the least important ones.
     const all = Object.keys(items);
     const ids = all.slice(0, MAX_ITEMS);
     storage?.setItem(SEEN_KEY, JSON.stringify({
-      at: now, items: Object.fromEntries(ids.map(id => [id, items[id]])), ...(all.length > MAX_ITEMS ? { partial: true } : {}),
+      at: now, items: Object.fromEntries(ids.map(id => [id, items[id]])), ...(incomplete || all.length > MAX_ITEMS ? { partial: true } : {}),
     }));
   } catch { /* quota or blocked storage: carry on */ }
 }

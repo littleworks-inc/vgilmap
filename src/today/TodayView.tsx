@@ -49,6 +49,10 @@ interface TodayViewProps {
   events: VigilEvent[];
   lastUpdated: Date | null;
   loading: boolean;
+  /** Domains the visitor has hidden in their view: the briefing leaves them out too. */
+  hiddenDomains?: Domain[];
+  /** The view is filtered (hidden domains or a non-default window), so a saved snapshot is incomplete. */
+  filteredView?: boolean;
   onExplore: () => void;
   onShowOnMap: (ev: VigilEvent) => void;
 }
@@ -57,7 +61,7 @@ interface TodayViewProps {
  * Today: a short briefing rather than a control room. What is new for you, then the most significant
  * developments elsewhere, each card saying what it rests on. The globe stays one tap away as Explore.
  */
-export function TodayView({ events, lastUpdated, loading, onExplore, onShowOnMap }: TodayViewProps) {
+export function TodayView({ events, lastUpdated, loading, hiddenDomains = [], filteredView = false, onExplore, onShowOnMap }: TodayViewProps) {
   const isMobile = useIsMobile();
   const [theme, setTheme] = useState(readTheme);
   const [now, setNow] = useState(() => Date.now());
@@ -75,8 +79,11 @@ export function TodayView({ events, lastUpdated, loading, onExplore, onShowOnMap
   // Remember what was on screen when the tab is hidden or closed, so the next visit can say what is new.
   const snapshotRef = useRef(briefing.snapshot);
   useEffect(() => { snapshotRef.current = briefing.snapshot; }, [briefing.snapshot]);
+  // A filtered view leaves things out of the snapshot; saved as partial, so they are not "new" when shown later.
+  const incompleteRef = useRef(filteredView);
+  useEffect(() => { incompleteRef.current = filteredView; }, [filteredView]);
   useEffect(() => {
-    const save = () => { if (Object.keys(snapshotRef.current).length > 0) saveSeen(snapshotRef.current, Date.now()); };
+    const save = () => { if (Object.keys(snapshotRef.current).length > 0) saveSeen(snapshotRef.current, Date.now(), undefined, incompleteRef.current); };
     const onHide = () => { if (document.visibilityState === 'hidden') save(); };
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', save);
@@ -130,6 +137,11 @@ export function TodayView({ events, lastUpdated, loading, onExplore, onShowOnMap
                   : briefing.major.map(c => <Card key={c.id} card={c} now={now} selected={c.id === selectedId} onOpen={() => setSelectedId(c.id)} />)}
               </section>
 
+              {hiddenDomains.length > 0 && (
+                <p className="t-note">
+                  Your view hides {hiddenDomains.map(d => DOMAIN_LABEL[d]).join(', ')}, so the briefing leaves {hiddenDomains.length === 1 ? 'it' : 'them'} out too. Change this in Explore.
+                </p>
+              )}
               <p className="t-note">
                 “Since you last visited” compares with what this browser showed last time (stored only on this device). It reports new items and added reports; it cannot yet show edits or corrections, which need stored incident history.
               </p>

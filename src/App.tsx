@@ -390,6 +390,9 @@ export default function App() {
     return cyberFocus ? byDomain.filter(ev => matchesCyberFocus(ev, cyberFocus)) : byDomain;
   }, [windowedEvents, activeDomains, cyberFocus]);
 
+  // The Today briefing follows the visitor's view: hidden domains stay hidden there too.
+  const briefingEvents = useMemo(() => windowedAll.filter(ev => activeDomains.has(ev.domain)), [windowedAll, activeDomains]);
+
   // Drill-down from the Cyber Trends panel: set the filter, then frame the map on the matches.
   const handleCyberFocus = useCallback((focus: CyberFocus | null) => {
     setCyberFocus(focus);
@@ -605,7 +608,9 @@ export default function App() {
 
       {view === 'today' && (
         <TodayView
-          events={windowedAll}
+          events={briefingEvents}
+          hiddenDomains={hiddenDomains}
+          filteredView={!viewIsDefault}
           lastUpdated={lastUpdated}
           loading={loading}
           onExplore={() => changeView('explore')}
