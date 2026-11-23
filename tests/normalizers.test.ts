@@ -3,6 +3,7 @@ import { normalizeNOAA } from '../shared/adapters/noaa';
 import { normalizeReliefWeb } from '../shared/adapters/reliefweb';
 import { normalizeCyberNews } from '../shared/adapters/cyber-news';
 import { normalizeCyber } from '../shared/adapters/cyber';
+import { clip } from '../shared/adapters/text';
 import { normalizeScience } from '../shared/adapters/science';
 import { normalizeFirms } from '../shared/adapters/nasa-firms';
 import { isMappable } from '../shared/types';
@@ -206,6 +207,41 @@ describe('Evidence labels (who says it happened)', () => {
     });
     expect(r.events.find(e => e.category === 'ransomware')?.evidence).toBe('claim');
     expect(r.events.find(e => e.category === 'vulnerability')?.evidence).toBe('official');
+  });
+});
+
+describe('ransomware claim description: the attacker\'s words stay the attacker\'s', () => {
+  const desc = (post?: string) => normalizeCyber({
+    victims: [{ victim: 'Acme Rail', group: 'PixelLeaks', country: 'IN', attackdate: '2026-11-20T00:00:00Z', activity: 'Transportation', ...(post !== undefined ? { description: post } : {}) }],
+    kev: [],
+  }).events[0].description;
+
+  it('says it is unverified, and quotes the leak-site post as the group\'s, not ours', () => {
+    const d = desc('This disclosure concerns a verified set of records.');
+    expect(d).toContain('PixelLeaks ransomware group claimed Acme Rail');
+    expect(d).toMatch(/Unverified/);
+    expect(d).toContain('Their leak-site post says: “This disclosure concerns a verified set of records.”');
+    expect(d.indexOf('Unverified')).toBeLessThan(d.indexOf('verified set'));
+  });
+  it('never cuts the post mid-word, and marks that it was shortened', () => {
+    const long = 'The material scheduled for publication comprises the booking database with fields for passengers, payments and travel history, plus internal documents and other records. '.repeat(3);
+    const d = desc(long);
+    const quoted = d.split('post says: “')[1];
+    expect(quoted.length).toBeLessThan(230);
+    expect(quoted).toMatch(/[.…]”$/);
+    expect(quoted).not.toMatch(/\bwith f”$/);
+  });
+  it('has no quote when the post says nothing', () => {
+    expect(desc()).not.toContain('leak-site post');
+    expect(desc('   ')).not.toContain('leak-site post');
+  });
+});
+
+describe('clip', () => {
+  it('leaves short text alone and tidies whitespace', () => { expect(clip('  a   b\n c ', 50)).toBe('a b c'); });
+  it('prefers a sentence end, else the last word, with an ellipsis', () => {
+    expect(clip('First sentence here. Second one runs on and on', 30)).toBe('First sentence here.');
+    expect(clip('alpha beta gamma delta epsilon', 14)).toBe('alpha beta…');
   });
 });
 

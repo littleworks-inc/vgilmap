@@ -8,6 +8,7 @@
 import type { VigilEvent, Severity } from '../types';
 import type { NormalizeResult } from './result';
 import { COUNTRY_COORDS, countryName } from './countries';
+import { clip } from './text';
 
 // ── Country centroids come from the shared ./countries module ──
 
@@ -74,10 +75,12 @@ function normalizeVictims(data: unknown): VigilEvent[] {
       category: 'ransomware',
       severity: ransomSeverity(sector),
       title: `Ransomware: ${v.victim} (${country})`,
+      // Our wording first (what is known, and that it is only a claim), then the attacker's own text,
+      // quoted and attributed so their "verified" or "scheduled for publication" never reads as our finding.
       description:
         `${v.group} ransomware group claimed ${v.victim}` +
-        `${sector !== 'Unknown' ? ` — ${sector} sector` : ''}. ` +
-        (v.description ? v.description.slice(0, 200) : ''),
+        `${sector !== 'Unknown' ? ` — ${sector} sector` : ''}. Unverified: this is the attacker's own claim.` +
+        (v.description?.trim() ? ` Their leak-site post says: “${clip(v.description, 200)}”` : ''),
       location: {
         lat: baseLat + dLat,
         lng: baseLng + dLng,
