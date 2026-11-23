@@ -210,6 +210,23 @@ export interface Fact {
   support: FactSupport[];
 }
 
+/** What the facts are drawn from: an incident's reports, or a single event that belongs to no incident. */
+export type FactsInput = Pick<Incident, 'reports' | 'firstSeen' | 'claimedBy'>;
+
+/**
+ * A cyber event that names no usable organization (a long leak-site victim description, a news item about
+ * a campaign) is in no incident, but the same questions still apply to it, and "Not established" is the
+ * honest answer to most of them. Vulnerabilities are not incidents at a place, so they are left out.
+ */
+export function factsInputOf(ev: VigilEvent): FactsInput | null {
+  if (ev.domain !== 'cyber' || ev.category === 'vulnerability') return null;
+  const group = ev.evidence === 'claim' ? ev.metadata?.group : undefined;
+  return {
+    firstSeen: ev.timestamp, ...(typeof group === 'string' && group ? { claimedBy: group } : {}),
+    reports: [{ id: ev.id, source: ev.source, evidence: ev.evidence ?? null, category: ev.category, title: ev.title, url: ev.sourceUrl, timestamp: ev.timestamp }],
+  };
+}
+
 const DISRUPTION = /\b(outage|disrupt\w*|offline|down|unavailable|restor\w*|halt\w*|shut\s?down|suspend\w*)\b/i;
 const compact = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)} million` : n >= 1_000 ? `${Math.round(n / 1_000)} thousand` : String(n));
 
@@ -218,7 +235,7 @@ const compact = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >=
  * one incident can have an organization-confirmed intrusion and an unverified theft claim at once.
  * Questions no report answers come back with `established: false`.
  */
-export function incidentFacts(incident: Incident, eventsById: ReadonlyMap<string, VigilEvent>): Fact[] {
+export function incidentFacts(incident: FactsInput, eventsById: ReadonlyMap<string, VigilEvent>): Fact[] {
   const { reports } = incident;
   const of = (k: EvidenceKind) => reports.filter(r => r.evidence === k);
   const sup = (rs: typeof reports): FactSupport[] => rs.map(r => ({ evidence: r.evidence, source: r.source, url: r.url, title: r.title, timestamp: r.timestamp }));

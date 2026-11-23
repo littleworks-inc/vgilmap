@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBriefing, evidenceSummary, incidentFacts, incidentHeadline, understanding } from '../src/today/briefing';
+import { buildBriefing, evidenceSummary, factsInputOf, incidentFacts, incidentHeadline, understanding } from '../src/today/briefing';
 import { loadSeen, MAX_ITEMS, saveSeen, SEEN_KEY } from '../src/today/seen';
 import type { SeenSnapshot } from '../src/today/seen';
 import { groupIncidents } from '../shared/pipeline/incidents';
@@ -213,6 +213,36 @@ describe('incidentFacts: each fact carries its own evidence, and unknowns stay u
     expect(line([cyber('c', 'Acme', 'claim', 3)])).toMatch(/^Only the attackers say this happened \(qilin\), and it is unverified\./);
     expect(line([cyber('c', 'Acme', 'claim', 3), cyber('n', 'Acme', 'report', 2)])).toMatch(/^News outlets report this; the organization has not confirmed it\. An attacker group \(qilin\) also claims it\./);
     expect(line([cyber('c', 'Acme', 'claim', 3), cyber('s', 'Acme', 'confirmed', 2)])).toMatch(/^The organization has confirmed this\./);
+  });
+});
+
+describe('a cyber event that is in no incident still gets facts and unknowns', () => {
+  // A leak-site victim described in nine words is not a usable organization name, so it is in no incident.
+  const longName = cyber('long', 'Indian railway Tatkal booking agency (licensed booking bot operator)', 'claim', 3);
+  const byId = (e: VigilEvent) => new Map([[e.id, e]]);
+  const facts = (e: VigilEvent) => incidentFacts(factsInputOf(e)!, byId(e));
+
+  it('really is ungrouped (otherwise this test proves nothing)', () => {
+    expect(groupIncidents([longName]).ungrouped.map(e => e.id)).toEqual(['long']);
+  });
+  it('an unnamed attacker claim is "claimed, unverified", and says what is not established', () => {
+    const f = facts(longName);
+    expect(f.find(x => x.id === 'happened')?.answer).toMatch(/Unverified/);
+    expect(f.find(x => x.id === 'actor')?.answer).toMatch(/qilin/);
+    expect(f.filter(x => !x.established).map(x => x.id)).toEqual(['services', 'scale']);
+    expect(f.filter(x => !x.established).every(x => x.support.length === 0)).toBe(true);
+    expect(f.filter(x => x.established).every(x => x.support.length > 0)).toBe(true);
+  });
+  it('an unnamed news report is "reported, not confirmed", with no attacker', () => {
+    const news = cyber('news', 'x', 'report', 2, { title: 'BADBOX botnet returns with record-breaking 40 billion daily ad requests' });
+    const f = facts(news);
+    expect(f.find(x => x.id === 'happened')?.answer).toMatch(/not confirmed/);
+    expect(f.find(x => x.id === 'actor')?.established).toBe(false);
+    expect(f.find(x => x.id === 'data')?.established).toBe(false);
+  });
+  it('vulnerabilities and other domains get none', () => {
+    expect(factsInputOf(ev('kev', { domain: 'cyber', category: 'vulnerability', evidence: 'official' }))).toBeNull();
+    expect(factsInputOf(quake('q', 'high', 1))).toBeNull();
   });
 });
 

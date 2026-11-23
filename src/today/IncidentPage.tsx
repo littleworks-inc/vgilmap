@@ -3,7 +3,7 @@ import type { EvidenceKind, VigilEvent } from '../types';
 import { EVIDENCE_META, isMappable } from '../types';
 import { safeHttpUrl } from '../utils/html';
 import { PRECISION_META } from '../../shared/pipeline/precision';
-import { incidentFacts, understanding } from './briefing';
+import { factsInputOf, incidentFacts, understanding } from './briefing';
 import type { BriefCard, Fact } from './briefing';
 
 /** Evidence label in the Today palette (colours come from the theme, so contrast holds in light and dark). */
@@ -54,7 +54,8 @@ interface PageProps {
 export function IncidentPage({ card, eventsById, lastVisitAt, onBack, onShowOnMap }: PageProps) {
   const [history, setHistory] = useState(false);
   const { incident, event } = card;
-  const facts = incident ? incidentFacts(incident, eventsById) : [];
+  const factsFrom = incident ?? factsInputOf(event);
+  const facts = factsFrom ? incidentFacts(factsFrom, eventsById) : [];
   const known = facts.filter(f => f.established);
   const unknown = facts.filter(f => !f.established);
   const precision = event.location.precision;
@@ -77,7 +78,10 @@ export function IncidentPage({ card, eventsById, lastVisitAt, onBack, onShowOnMa
             {known.map(f => <FactRow key={f.id} fact={f} />)}
           </>
         ) : (
-          <p className="pg-lead">{event.description || event.title}</p>
+          <>
+            <p className="pg-lead">{event.description || event.title}</p>
+            {known.map(f => <FactRow key={f.id} fact={f} />)}
+          </>
         )}
       </section>
 
@@ -120,7 +124,7 @@ export function IncidentPage({ card, eventsById, lastVisitAt, onBack, onShowOnMa
         )}
       </section>
 
-      {incident && (
+      {facts.length > 0 && (
         <section aria-labelledby="pg-unknown">
           <h2 id="pg-unknown">Unknowns</h2>
           {unknown.length === 0 ? <p className="card-note" style={{ margin: 0 }}>Every question above has at least one supporting report. That does not make each answer certain: see the evidence label on each.</p>
