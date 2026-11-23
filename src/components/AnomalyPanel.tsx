@@ -89,6 +89,7 @@ export function AnomalyPanel({ signals, onSelectSignal }: AnomalyPanelProps) {
               <button
                 key={signal.id}
                 onClick={() => onSelectSignal(signal)}
+                title="Zoom the map to this signal"
                 style={{
                   width: '100%',
                   textAlign: 'left',

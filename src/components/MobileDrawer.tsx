@@ -22,6 +22,7 @@ import type { SourceHealth } from '../health/sourceHealth';
 import type { Domain } from '../types';
 import type { AnomalySignal } from '../intelligence/anomaly';
 import type { CyberFocus } from '../types';
+import { eventRowTitle } from '../utils/eventRow';
 interface MobileDrawerProps {
   /** Switch to the Today briefing. */
   onOpenToday?: () => void;
@@ -92,6 +93,7 @@ export function MobileDrawer({
                 role="button"
                 tabIndex={0}
                 aria-expanded={unmapped ? opened : undefined}
+                title={eventRowTitle({ unmapped, incident: !!incident, expanded: opened })}
                 onClick={() => {
                   onSelectEvent(ev);
                   if (unmapped) {
@@ -136,7 +138,7 @@ export function MobileDrawer({
                     {incident && (
                       // Its own tap target: tapping the row itself still flies the map to the incident.
                       <span
-                        role="button" tabIndex={0} aria-expanded={opened}
+                        role="button" tabIndex={0} aria-expanded={opened} title={opened ? 'Hide the reports behind this incident' : 'List the reports behind this incident'}
                         onClick={e => { e.stopPropagation(); setOpenId(opened ? null : ev.id); }}
                         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setOpenId(opened ? null : ev.id); } }}
                         style={{ color: '#7d8ba1', padding: '4px 2px', cursor: 'pointer' }}
@@ -247,6 +249,7 @@ export function MobileDrawer({
             {onOpenToday && (
               <button
                 onClick={e => { e.stopPropagation(); onOpenToday(); }}
+                title="Open the Today briefing"
                 style={{ background: '#0f766e22', border: '1px solid #0f766e', color: '#5eead4', borderRadius: '6px', padding: '4px 10px', fontSize: '12px', fontWeight: 600 }}
               >
                 Today
@@ -315,6 +318,7 @@ export function MobileDrawer({
             </span>
             <button
               onClick={onRefresh}
+              title="Reload every source now"
               disabled={loading}
               style={{
                 background: 'none', border: '1px solid #334155',
@@ -336,6 +340,7 @@ export function MobileDrawer({
           {rows.length > DRAWER_ROWS && (
             <button
               onClick={() => setShowAll(v => !v)}
+              title={showAll ? 'Collapse the list to the latest events' : 'Show every event in the list'}
               style={{ width: '100%', padding: '14px', background: 'none', border: 'none', borderTop: '1px solid #1e293b', color: '#7d8ba1', fontSize: '12px', cursor: 'pointer' }}
             >
               {showAll ? '▲ Show less' : `▼ Show all ${filtered.length} events`}

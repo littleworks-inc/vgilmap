@@ -128,6 +128,7 @@ export function CyberTrendsPanel({ focus, onFocus }: CyberTrendsPanelProps) {
               <button
                 key={t}
                 onClick={() => setTab(t)}
+                title={`Rank by ${t}`}
                 style={{
                   flex: 1, fontSize: '10px', fontWeight: 600, padding: '3px 0', cursor: 'pointer',
                   borderRadius: '4px', textTransform: 'capitalize',

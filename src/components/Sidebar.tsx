@@ -24,6 +24,7 @@ import type { SourceHealth } from '../health/sourceHealth';
 import type { Domain } from '../types';
 import type { AnomalySignal } from '../intelligence/anomaly';
 import type { CyberFocus } from '../types';
+import { eventRowTitle } from '../utils/eventRow';
 
 interface SidebarProps {
   /** Switch to the Today briefing. */
@@ -282,6 +283,7 @@ export function Sidebar({
               role="button"
               tabIndex={0}
               aria-expanded={expandable ? expanded : undefined}
+              title={eventRowTitle({ unmapped, incident: !!incident, expanded })}
               onClick={activate}
               onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); activate(); } }}
               style={{
@@ -428,6 +430,7 @@ export function Sidebar({
         )}
         <a
           href="/"
+          title="VigilMap home"
           style={{
             textDecoration: 'none',
             display: 'flex',
@@ -506,6 +509,7 @@ export function Sidebar({
         </span>
         <button
           onClick={onRefresh}
+          title="Reload every source now"
           disabled={loading}
           style={{
             background: 'none',
@@ -544,6 +548,7 @@ export function Sidebar({
           {trimmed && (
             <button
               onClick={() => setQuery('')}
+              title="Clear the search"
               style={{
                 background: 'none', border: 'none',
                 color: '#7d8ba1', cursor: 'pointer',
@@ -568,6 +573,7 @@ export function Sidebar({
           }}>🔍</span>
           <input
             type="text"
+            title="Search event titles, places and sources"
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search events, locations…"
@@ -590,6 +596,7 @@ export function Sidebar({
           {query && (
             <button
               onClick={() => setQuery('')}
+              title="Clear the search"
               style={{
                 position: 'absolute',
                 right: '20px',
@@ -638,6 +645,7 @@ export function Sidebar({
             <br />
             <button
               onClick={() => setQuery('')}
+              title="Clear the search and show every event again"
               style={{
                 marginTop: '10px',
                 padding: '4px 12px',
@@ -667,6 +675,7 @@ export function Sidebar({
             <br />
             <button
               onClick={onRefresh}
+              title="Try loading the data again"
               style={{
                 marginTop: '8px',
                 padding: '4px 12px',
@@ -697,6 +706,7 @@ export function Sidebar({
       {!trimmed && rows.length > INITIAL_COUNT && (
         <button
           onClick={() => setShowAll(v => !v)}
+          title={showAll ? 'Collapse the list to the latest events' : 'Show every event in the list'}
           style={{
             width: '100%',
             padding: '10px',

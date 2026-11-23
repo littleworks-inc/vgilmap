@@ -17,7 +17,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString([], { dateStyle: '
 
 function Source({ url, source }: { url: string; source: string }) {
   const href = safeHttpUrl(url);
-  return href ? <a href={href} target="_blank" rel="noopener noreferrer">{source} ↗</a> : <span>{source}</span>;
+  return href ? <a href={href} target="_blank" rel="noopener noreferrer" title="Open the original report (new tab)">{source} ↗</a> : <span>{source}</span>;
 }
 
 function FactRow({ fact }: { fact: Fact }) {
@@ -63,7 +63,7 @@ export function IncidentPage({ card, eventsById, lastVisitAt, onBack, onShowOnMa
 
   return (
     <article className="pg" aria-label={card.headline}>
-      <button className="pg-back" onClick={onBack}>← Back to Today</button>
+      <button className="pg-back" onClick={onBack} title="Back to the Today briefing">← Back to Today</button>
       <h1>{card.headline}</h1>
       <p className="pg-where">
         {card.place} · reported <time className="mono" dateTime={card.published} title={when(card.published)}>{when(card.published)}</time>
@@ -91,7 +91,7 @@ export function IncidentPage({ card, eventsById, lastVisitAt, onBack, onShowOnMa
         {card.note && <p className="card-note">{card.note}</p>}
         {incident && (
           <>
-            <button className="pg-toggle" style={{ marginTop: 8 }} onClick={() => setHistory(h => !h)} aria-expanded={history}>
+            <button className="pg-toggle" style={{ marginTop: 8 }} onClick={() => setHistory(h => !h)} aria-expanded={history} title={history ? 'Hide the list of reports' : 'Show when each report appeared'}>
               {history ? 'Hide full history' : 'Full history'}
             </button>
             {history && (
@@ -137,7 +137,7 @@ export function IncidentPage({ card, eventsById, lastVisitAt, onBack, onShowOnMa
         <p style={{ margin: '0 0 10px' }}>
           {mappable ? <><strong>{PRECISION_META[precision ?? 'exact'].label}.</strong> {PRECISION_META[precision ?? 'exact'].hint}.</> : 'This has no real place, so it is not on the map.'}
         </p>
-        {mappable && <button className="pg-btn" onClick={() => onShowOnMap(event)}>Show on the map</button>}
+        {mappable && <button className="pg-btn" onClick={() => onShowOnMap(event)} title="Switch to the globe and select this event">Show on the map</button>}
       </section>
     </article>
   );

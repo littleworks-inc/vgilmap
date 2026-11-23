@@ -571,6 +571,7 @@ export default function App() {
               <button
                 onClick={() => setCyberFocus(null)}
                 aria-label="Clear cyber filter"
+                title="Clear this filter and show all cyber events"
                 style={{
                   background: '#1e293b', border: 'none', color: '#94a3b8', cursor: 'pointer',
                   borderRadius: '10px', width: '20px', height: '20px', fontSize: '11px',

@@ -57,7 +57,7 @@ export function IncidentReports({ incident }: { incident: IncidentSummary }) {
             {r.evidence && <EvidenceBadge kind={r.evidence} compact />}
             <span style={{ color: '#94a3b8' }}>{r.source}</span>
             <span style={{ color: '#7d8ba1', fontSize: '11px' }}>{new Date(r.timestamp).toLocaleDateString()}</span>
-            {href && <a href={href} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#60a5fa', fontSize: '11px' }}>read ↗</a>}
+            {href && <a href={href} target="_blank" rel="noopener noreferrer" title="Read the original report (opens in a new tab)" onClick={e => e.stopPropagation()} style={{ color: '#60a5fa', fontSize: '11px' }}>read ↗</a>}
           </div>
         );
       })}

@@ -13,6 +13,11 @@ export function ListFilterBar({
   /** Taller tap targets, for the touch layout. */
   compact?: boolean;
 }) {
+  const TITLES: Record<ListFilter, string> = {
+    all: 'Every event in view, plotted or not',
+    map: 'Only events plotted on the globe',
+    nomap: 'Only events with no map location (shown in the list only)',
+  };
   const choices: Array<[ListFilter, string, number]> = [
     ['all', 'All', counts.all],
     ['map', 'On map', counts.map],
@@ -27,6 +32,7 @@ export function ListFilterBar({
             key={id}
             onClick={() => onChange(id)}
             aria-pressed={on}
+            title={TITLES[id]}
             style={{
               flex: 1, fontSize: compact ? '12px' : '11px', fontWeight: 600, padding: compact ? '8px 0' : '4px 0',
               cursor: 'pointer', borderRadius: '6px', whiteSpace: 'nowrap',

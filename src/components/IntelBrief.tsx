@@ -201,6 +201,7 @@ export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
         {/* Right: Generate / Regenerate / cooldown button */}
         <button
           onClick={e => { e.stopPropagation(); handleGenerate(); }}
+          title={buttonDisabled ? 'Not available right now (loading, or waiting out the cooldown)' : 'Write an AI summary of current events'}
           disabled={buttonDisabled}
           style={{
             background: buttonDisabled ? 'transparent' : '#1e3a5f',
@@ -280,6 +281,7 @@ export function IntelBrief({ events, anomalySignals }: IntelBriefProps) {
                   {isOld && cooldown === 0 && (
                     <button
                       onClick={handleGenerate}
+                      title="This brief is out of date: write a new one"
                       style={{
                         background: 'none',
                         border: 'none',

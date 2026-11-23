@@ -39,7 +39,7 @@ function Card({ card, now, selected, onOpen }: { card: BriefCard; now: number; s
         <span>{card.evidenceSummary}</span>
       </p>
       {card.note && <p className="card-note">{card.note}</p>}
-      <button className="card-open" onClick={onOpen}>Open</button>
+      <button className="card-open" onClick={onOpen} title="Open the details and what this rests on">Open</button>
     </article>
   );
 }
@@ -106,12 +106,12 @@ export function TodayView({ events, lastUpdated, loading, hiddenDomains = [], fi
       <header className="t-top">
         <span className="t-brand">🌍 VigilMap</span>
         <nav className="t-nav" aria-label="Primary">
-          <button aria-current="page">Today</button>
-          <button onClick={onExplore}>Explore</button>
+          <button aria-current="page" title="The Today briefing (you are here)">Today</button>
+          <button onClick={onExplore} title="Back to the interactive globe">Explore</button>
         </nav>
         <span className="t-spacer" />
         <span className="t-status" role="status">{loading ? 'Loading sources…' : lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString([], { timeStyle: 'short' })}` : ''}</span>
-        <button className="t-theme" onClick={chooseTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? 'Dark' : 'Light'}</button>
+        <button className="t-theme" onClick={chooseTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>{theme === 'light' ? 'Dark' : 'Light'}</button>
       </header>
 
       <div className="t-body">
