@@ -40,7 +40,7 @@ const ALL_DOMAINS: Domain[] = [
 ];
 
 const DOMAIN_LABELS: Record<Domain, string> = {
-  disaster: 'Earthquakes',
+  disaster: 'Disasters',
   climate:  'Climate',
   health:   'Health',
   conflict: 'Conflict',
