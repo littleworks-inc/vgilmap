@@ -20,8 +20,8 @@ const SOURCES = ['VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'] as const;
 const KEEP = 150;
 const TIMEOUT_MS = 20_000;
 
-async function fetchSource(source: string, key: string): Promise<string | null> {
-  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key}/${source}/-180,-90,180,90/1`;
+async function fetchSource(source: string, key: string, days: number): Promise<string | null> {
+  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key}/${source}/-180,-90,180,90/${days}`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) return null;
@@ -92,8 +92,12 @@ export default async function handler(req: Request): Promise<Response> {
 
   const key = process.env.NASA_FIRMS_API_KEY ?? process.env.VITE_NASA_FIRMS_API_KEY ?? 'DEMO_KEY';
 
-  for (const source of SOURCES) {
-    const csv = await fetchSource(source, key);
+  // The day range counts from the current UTC day, so for the first hours after 00:00 UTC a
+  // 1-day request is header-only (no satellite has reported for "today" yet). Retry with 2 days
+  // then, so the map shows yesterday's fires instead of a spurious 502.
+  const attempts = SOURCES.flatMap(source => [[source, 1], [source, 2]] as const);
+  for (const [source, days] of attempts) {
+    const csv = await fetchSource(source, key, days);
     if (csv) {
       return new Response(topByFrp(csv), {
         status: 200,
