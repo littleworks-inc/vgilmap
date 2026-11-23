@@ -77,9 +77,8 @@ export function DomainFilter({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '6px',
-        flexWrap: isMobile ? 'nowrap' : 'wrap',
-        rowGap: '6px',
+        gap: '8px',
+        flexWrap: 'nowrap',
         overflowX: isMobile ? ('auto' as const) : ('visible' as const),
         WebkitOverflowScrolling: 'touch' as const,
         padding: '8px 12px',
@@ -91,6 +90,15 @@ export function DomainFilter({
         scrollbarWidth: 'none',
       }}
     >
+      {/* Domain chips: wrap among themselves on a laptop (so none is hidden), one scrollable row on phones.
+          The reset button and the time window live in their own cluster on the right, so they never
+          move when the chips wrap or the number of domains with data changes. */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: '6px', rowGap: '6px',
+          flexWrap: isMobile ? 'nowrap' : 'wrap', flex: isMobile ? '0 0 auto' : '1 1 0', minWidth: 0,
+        }}
+      >
       {/* All / None shortcuts */}
       <button
         onClick={allActive ? onClearAll : onSelectAll}
@@ -173,6 +181,15 @@ export function DomainFilter({
         </>
       )}
 
+      </div>
+
+      {/* Right cluster: pinned to the right edge (with a soft fade over the chips on phones). */}
+      <div
+        style={{
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto',
+          ...(isMobile ? { position: 'sticky' as const, right: 0, zIndex: 2, background: 'rgba(10,15,30,0.95)', boxShadow: '-10px 0 8px 2px rgba(10,15,30,0.95)' } : {}),
+        }}
+      >
       {/* The view is remembered across refreshes, so say so when it isn't the default: otherwise a
           filter from yesterday looks like missing data. */}
       {!viewIsDefault && (
@@ -181,23 +198,20 @@ export function DomainFilter({
           title={`Your saved view is active (${viewSummary}). Click to return to the default view.`}
           style={{
             ...pillBase, flexShrink: 0, background: '#422006', color: '#fbbf24',
-            border: '1px solid #92400e', fontSize: '11px', padding: '3px 10px', marginLeft: 'auto',
+            border: '1px solid #92400e', fontSize: '11px', padding: '3px 10px',
           }}
         >
           ↺ Filters active · Reset view
         </button>
       )}
 
-      {/* Time window — pushed to the right edge */}
+      {/* Time window */}
       <div
         role="group"
         aria-label="Time window"
         style={{
-          marginLeft: viewIsDefault ? 'auto' : '8px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '2px',
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: '2px',
           background: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', padding: '2px',
-          // The chips row scrolls sideways when there are many domains; keep this control pinned
-          // to the right edge (with a soft fade) instead of letting it scroll out of view.
-          ...(isMobile ? { position: 'sticky' as const, right: 0, zIndex: 2, boxShadow: '-10px 0 8px 2px rgba(10,15,30,0.95)' } : {}),
         }}
       >
         <span style={{ fontSize: '10px', color: '#8a99ae', padding: '0 6px 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Last</span>
@@ -220,6 +234,7 @@ export function DomainFilter({
             </button>
           );
         })}
+      </div>
       </div>
     </div>
   );
