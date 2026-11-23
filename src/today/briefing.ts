@@ -75,6 +75,8 @@ export interface BriefCard {
   note?: string;
   event: VigilEvent;
   incident?: Incident;
+  /** Ids of every event this card stands for (more than one when identical alerts were merged). */
+  memberIds: string[];
   score: number;
 }
 
@@ -139,21 +141,35 @@ export function buildBriefing({ events, seen, now }: { events: VigilEvent[]; see
       id: i.id, kind: 'incident', domain: 'cyber', severity: i.severity, headline: incidentHeadline(i), place: placeOfIncident(i),
       published: i.lastSeen, ...(occurred ? { occurred } : {}),
       change: changeFor(i.id, i.reportCount, i.evidence, i.lastSeen, seen, now),
-      evidenceSummary: evidenceSummary(i.reports), event, incident: i,
+      evidenceSummary: evidenceSummary(i.reports), event, incident: i, memberIds: [i.id],
       // An incident that rests ONLY on an attacker's own claim is unverified, so it ranks below measured or
       // reported events of the same severity: a leak-site listing should not lead the briefing by itself.
       score: SEVERITY_POINTS[i.severity] + recency(i.lastSeen, now) + Math.min(10, (i.reportCount - 1) * 5) + (i.evidence.includes('confirmed') ? 5 : 0)
         - (i.evidence.every(k => k === 'claim') ? CLAIM_ONLY_PENALTY : 0),
     });
   }
+  // The same alert is often published once per zone (NOAA issues one id per area, with an identical
+  // title). One card per distinct warning, not one per zone: a copy-for-copy repeat adds no information.
+  const sameWarning = new Map<string, VigilEvent[]>();
   for (const e of ungrouped) {
     if (e.category === 'vulnerability') continue; // an exploited vulnerability is not an incident at a place
+    const key = `${e.source}|${e.domain}|${e.title}`;
+    const list = sameWarning.get(key);
+    if (list) list.push(e); else sameWarning.set(key, [e]);
+  }
+  for (const members of sameWarning.values()) {
+    // Prefer a copy the visitor has already seen (so a merged card is not "new" again), then one with a place.
+    const e = [...members].sort((a, b) =>
+      Number(!!seen?.items[b.id]) - Number(!!seen?.items[a.id]) || Number(isMappable(b)) - Number(isMappable(a)) || (a.id < b.id ? -1 : 1))[0];
+    const others = members.length - 1;
+    const expiry = e.expiresAt ? `Active until ${new Date(e.expiresAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : '';
+    const note = [expiry, others > 0 ? `Also issued for ${others} other area${others === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
     cards.push({
       id: e.id, kind: 'event', domain: e.domain, severity: e.severity, headline: e.title, place: placeOfEvent(e), published: e.timestamp,
       change: changeFor(e.id, 1, [], e.timestamp, seen, now),
       evidenceSummary: e.evidence ? evidenceSummary([{ evidence: e.evidence }]) : e.source,
-      ...(e.expiresAt ? { note: `Active until ${new Date(e.expiresAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` } : {}),
-      event: e, score: SEVERITY_POINTS[e.severity] + recency(e.timestamp, now),
+      ...(note ? { note } : {}),
+      event: e, memberIds: members.map(m => m.id), score: SEVERITY_POINTS[e.severity] + recency(e.timestamp, now),
     });
   }
 
@@ -176,7 +192,9 @@ export function buildBriefing({ events, seen, now }: { events: VigilEvent[]; see
 
   // Most important first, so that if the snapshot has to be cut it drops what could never lead the briefing.
   const snapshot: Record<string, SeenItem> = {};
-  for (const c of [...cards].sort(byScore)) snapshot[c.id] = { n: c.incident?.reportCount ?? 1, evidence: c.incident?.evidence ?? [] };
+  for (const c of [...cards].sort(byScore)) {
+    for (const id of c.memberIds) snapshot[id] = { n: c.incident?.reportCount ?? 1, evidence: c.incident?.evidence ?? [] };
+  }
   return { sinceLast, major, snapshot, ...(seen ? { lastVisitAt: seen.at } : {}) };
 }
 

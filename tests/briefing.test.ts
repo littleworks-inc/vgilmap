@@ -128,6 +128,38 @@ describe('buildBriefing', () => {
   });
 });
 
+describe('identical alerts for several areas are one card', () => {
+  const alert = (id: string, over: Partial<VigilEvent> = {}) => ev(id, {
+    domain: 'climate', category: 'weather', severity: 'high', source: 'NOAA NWS', timestamp: at(1), title: 'Heavy Freezing Spray Warning by NWS Fairbanks AK',
+    expiresAt: new Date(NOW + 5 * HOUR).toISOString(), ...over,
+  });
+  const copies = [alert('z1'), alert('z2'), alert('z3')];
+
+  it('shows one card for the same warning issued per zone, and says how many areas', () => {
+    const b = buildBriefing({ events: copies, seen: null, now: NOW });
+    const cards = [...b.sinceLast, ...b.major];
+    expect(cards).toHaveLength(1);
+    expect(cards[0].note).toMatch(/Also issued for 2 other areas/);
+    expect(cards[0].memberIds.sort()).toEqual(['z1', 'z2', 'z3']);
+  });
+  it('does not merge different warnings, or the same title from a different source', () => {
+    const b = buildBriefing({ events: [alert('a'), alert('b', { title: 'Coastal Flood Warning by NWS Seattle WA' }), alert('c', { source: 'Other' })], now: NOW, seen: null });
+    expect([...b.sinceLast, ...b.major]).toHaveLength(3);
+  });
+  it('a merged card is not "new" again on the next visit, whichever copy represents it', () => {
+    const first = buildBriefing({ events: copies, seen: null, now: NOW });
+    const seen: SeenSnapshot = { at: NOW, items: first.snapshot };
+    const again = buildBriefing({ events: [...copies].reverse(), seen, now: NOW + HOUR });
+    expect(again.sinceLast).toHaveLength(0);
+  });
+  it('a copy added later is part of the same card, not a new one', () => {
+    const first = buildBriefing({ events: copies.slice(0, 2), seen: null, now: NOW });
+    const again = buildBriefing({ events: copies, seen: { at: NOW, items: first.snapshot }, now: NOW + HOUR });
+    expect(again.sinceLast).toHaveLength(0);
+    expect(again.major[0].note).toMatch(/2 other areas/);
+  });
+});
+
 describe('incidentFacts: each fact carries its own evidence, and unknowns stay unknown', () => {
   const build = (evs: VigilEvent[]) => {
     const [i] = groupIncidents(evs).incidents;
