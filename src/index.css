@@ -32,6 +32,15 @@ html, body, #root {
   border-bottom-color: #1e293b !important;
 }
 
+/* The hover popup (see Globe.tsx) must never catch the mouse. It is drawn next to the marker, and when it
+   lands under the pointer (a tall popup near the map's edge) MapLibre reads "pointer left the marker",
+   removes it, and the popup is torn down the instant it appears, so nothing shows at all. */
+.vigil-hover-popup,
+.vigil-hover-popup .maplibregl-popup-content,
+.vigil-hover-popup .maplibregl-popup-content * {
+  pointer-events: none !important;
+}
+
 .maplibregl-popup-close-button {
   color: #64748b !important;
   font-size: 16px !important;

@@ -390,11 +390,16 @@ export function Globe({ events, onEventClick }: GlobeProps) {
     map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
 
     // ── Idle auto-pan ───────────────────────────────────
+    // A slow spin of the whole globe while nobody is using it. It only runs while the globe is zoomed
+    // OUT: spinning at the same angular rate when zoomed in sends a marker sliding away at hundreds of
+    // pixels a second, so it can never be hovered or read. Any mouse movement over the map counts as use.
+    const IDLE_SPIN_MAX_ZOOM = 4;
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
     let panFrame: number | null = null;
     let isPanning = false;
     const startPan = () => {
       if (isPanning) return;
+      if (map.getZoom() > IDLE_SPIN_MAX_ZOOM) { resetIdle(); return; } // looking closely at something: check again later
       isPanning = true;
       const pan = () => {
         if (!isPanning) return;
@@ -410,17 +415,26 @@ export function Globe({ events, onEventClick }: GlobeProps) {
       isPanning = false;
       if (panFrame) { cancelAnimationFrame(panFrame); panFrame = null; }
     };
-    const resetIdle = () => {
+    function resetIdle() {
       stopPan();
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(startPan, 30000); // 30s idle → start pan
-    };
+    }
     // Start idle timer
     resetIdle();
     // Stop panning on any user interaction
     ['mousedown', 'wheel', 'touchstart', 'keydown'].forEach(evt => {
       map.getContainer().addEventListener(evt, resetIdle, { passive: true });
     });
+    // Moving the mouse over the map is use too (reading a hover popup, aiming at a marker). Throttled: this
+    // fires on every pixel of movement and only needs to push the timer back now and then.
+    let lastMoveReset = 0;
+    map.getContainer().addEventListener('mousemove', () => {
+      const now = performance.now();
+      if (now - lastMoveReset < 250) return;
+      lastMoveReset = now;
+      resetIdle();
+    }, { passive: true });
     // Store cleanup + resetIdle on the map for later
     (map as any)._vigilCleanup = () => {
       stopPan();
@@ -536,6 +550,7 @@ export function Globe({ events, onEventClick }: GlobeProps) {
       // ── Hover: show popup + highlight on mousemove ───────
       map.on('mouseenter', LAYER_ID, () => {
         map.getCanvas().style.cursor = 'pointer';
+        (map as unknown as { _vigilResetIdle?: () => void })._vigilResetIdle?.();
       });
       map.on('mousemove', LAYER_ID, e => {
         if (!e.features || !e.features[0]) return;
