@@ -33,6 +33,8 @@ export interface IncidentReport {
   id: string;
   source: string;
   evidence: EvidenceKind | null;
+  /** What THIS report is about (e.g. 'ransomware'), so a stance can be tied to the assertion it supports. */
+  category: string;
   title: string;
   url: string;
   /** When the report was published or added. */
@@ -153,6 +155,11 @@ const SEVERITY_RANK: Record<Severity, number> = { info: 0, low: 1, medium: 2, hi
 /** Most specific category wins for the incident as a whole. */
 const CATEGORY_ORDER = ['ransomware', 'supply-chain', 'espionage', 'malware', 'data-breach', 'ddos', 'phishing', 'cyberattack'];
 
+/** The most specific of several categories (ransomware over a generic cyberattack). */
+export function mostSpecificCategory(categories: string[]): string | undefined {
+  return CATEGORY_ORDER.find(c => categories.includes(c)) ?? categories[0];
+}
+
 const PRECISION_RANK = { exact: 3, area: 2, country: 1, unknown: 0 } as const;
 const placeRank = (e: VigilEvent) => (isMappable(e) ? PRECISION_RANK[e.location.precision ?? 'country'] : 0);
 
@@ -246,7 +253,7 @@ export function groupIncidents(events: VigilEvent[]): Grouping {
       reports: byTime.map(m => {
         const occurred = occurredAt(m.ev);
         return {
-          id: m.ev.id, source: m.ev.source, evidence: m.ev.evidence ?? null, title: m.ev.title, url: m.ev.sourceUrl, timestamp: m.ev.timestamp,
+          id: m.ev.id, source: m.ev.source, evidence: m.ev.evidence ?? null, category: m.ev.category, title: m.ev.title, url: m.ev.sourceUrl, timestamp: m.ev.timestamp,
           ...(occurred !== time(m.ev) ? { occurredAt: new Date(occurred).toISOString() } : {}),
         };
       }),
@@ -274,6 +281,24 @@ export interface Collapsed {
 }
 
 /**
+ * The single event that stands for an incident on the map and in lists: its strongest-evidence report,
+ * with the incident's highest severity and category, and, if that report has no place but another
+ * does, that place (otherwise an incident with a located claim would vanish behind an unlocated article).
+ */
+export function representativeEvent(inc: Incident, byId: ReadonlyMap<string, VigilEvent>): VigilEvent | undefined {
+  const primary = byId.get(inc.primaryId);
+  if (!primary) return undefined;
+  const placed = inc.placeId && inc.placeId !== primary.id && !isMappable(primary) ? byId.get(inc.placeId) : undefined;
+  const { unlocated: _drop, ...meta } = primary.metadata ?? {};
+  void _drop;
+  return {
+    ...primary, severity: inc.severity, category: inc.category, incidentId: inc.id,
+    ...(placed ? { location: placed.location } : {}),
+    metadata: { ...(placed ? meta : primary.metadata), incident: summaryOf(inc) },
+  };
+}
+
+/**
  * Replace each multi-report incident's reports with one representative event (the strongest-evidence
  * report), stamped with `incidentId`, the incident's highest severity and `metadata.incident`.
  * Single-report incidents and everything else pass through untouched, in their original order.
@@ -286,17 +311,8 @@ export function collapseIncidents(events: VigilEvent[]): Collapsed {
   const hidden = new Set<string>();
   const byId = new Map(events.map(e => [e.id, e]));
   for (const inc of multi) {
-    const primary = byId.get(inc.primaryId)!;
-    // If the strongest report has no place but another report does, the incident takes that place:
-    // otherwise an incident with a located claim would vanish from the map behind an unlocated article.
-    const placed = inc.placeId && inc.placeId !== primary.id && !isMappable(primary) ? byId.get(inc.placeId) : undefined;
-    const { unlocated: _drop, ...meta } = primary.metadata ?? {};
-    void _drop;
-    stamp.set(primary.id, {
-      ...primary, severity: inc.severity, category: inc.category, incidentId: inc.id,
-      ...(placed ? { location: placed.location } : {}),
-      metadata: { ...(placed ? meta : primary.metadata), incident: summaryOf(inc) },
-    });
+    const rep = representativeEvent(inc, byId);
+    if (rep) stamp.set(rep.id, rep);
     for (const r of inc.reports) {
       memberToPrimary.set(r.id, inc.primaryId);
       if (r.id !== inc.primaryId) hidden.add(r.id);

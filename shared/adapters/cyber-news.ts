@@ -10,6 +10,7 @@
 import type { VigilEvent, Severity } from '../types';
 import type { NormalizeResult, NewsInput } from './result';
 import { feedParts, feedWarnings } from './result';
+import { NEGATED, plainQuotes } from './text';
 import { countryName, findCountries } from './countries';
 
 interface Kind { category: string; label: string; severity: Severity }
@@ -68,14 +69,7 @@ const AUDIENCE_FORM = /^(?:notifies|notified|warns)\s/i;
 const SELF_REFERENCE = /\b(?:its|itself|our|we|us)\b|\bit\s+(?:was|has|had|is|detected|discovered|identified|experienced|suffered|became|fell)\b/i;
 // Hedged or unverified language: the organization is not (yet) confirming anything.
 const HEDGED = /\b(?:investigat\w*|looking into|aware of|reviewing|probing|examining|claims?|claimed|alleg\w*|unconfirmed|may have|might have|possibly|possible|potential|suspected|reportedly|rumou?rs?)\b/i;
-// Negation or denial, checked after quotes are normalised ("didn’t" and "didn't" are the same word).
-const NEGATED = /\b(?:not|no|never|denies|denied|unaffected|without|rejects|refutes|disputes|didn'?t|doesn'?t|wasn'?t|isn'?t|hasn'?t|haven'?t|won'?t|cannot|can'?t)\b/i;
 const THIRD_PARTY = /\b(?:third[- ]party|vendors?|suppliers?|partners?|contractors?|processors?|service providers?)\b/i;
-
-/** Typographic quotes and apostrophes to plain ASCII, so patterns written with ' also match ’. */
-function plainQuotes(s: string): string {
-  return s.replace(/[\u2018\u2019\u201B\u2032]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"');
-}
 
 interface Guess {
   name: string;
